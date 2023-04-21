@@ -3,3 +3,6 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+
+# contains the WIFI_SIDD and WIFI_PASSWORD as const char *
+include/secrets.h
