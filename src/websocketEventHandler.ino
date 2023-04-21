@@ -52,22 +52,17 @@ void handleSingleFrame(AsyncWebSocketClient* client, uint8_t* data, size_t len) 
     char* pch = strtok(reinterpret_cast<char*>(data), "\n");
     if (!pch) return;
 
-    static size_t _pausedPosition = 0;
-
     if (_paused && !strcmp("unpause", pch)) {
         playerMessage msg;
         msg.action = playerMessage::CONNECTTOHOST;
-        msg.value = _pausedPosition;
+        msg.value = _currentPosition;
         snprintf(msg.url, PLAYLIST_MAX_URL_LENGTH, playList.url(playList.currentItem()).c_str());
         xQueueSend(playerQueue, &msg, portMAX_DELAY);
         return;
     }
 
     if (!_paused && !strcmp("pause", pch)) {
-        pch = strtok(NULL, "\n");
-        if (!pch) return;
         _paused = true;
-        _pausedPosition = atoi(pch);
         ws.textAll("status\npaused\n");
         playerMessage msg;
         msg.action = playerMessage::STOPSONG;

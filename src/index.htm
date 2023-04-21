@@ -866,7 +866,7 @@
       });
 
       $('body').on('click', '#pausebutton', function () {
-        ws.send("pause\n" + $('#progress').attr("value"));
+        ws.send("pause\n");
       });
 
       $('body').on('click', '#playbutton', function () {
