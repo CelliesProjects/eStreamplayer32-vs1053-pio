@@ -345,7 +345,8 @@ void setup() {
 
     btStop();
 
-    if (SET_STATIC_IP && !WiFi.config(STATIC_IP, GATEWAY, SUBNET, PRIMARY_DNS, SECONDARY_DNS)) {
+    static IPAddress ip;
+    if (SET_STATIC_IP && !WiFi.config(ip.fromString(STATIC_IP), ip.fromString(GATEWAY), ip.fromString(SUBNET), ip.fromString(PRIMARY_DNS))) {
         log_e("Setting static IP failed");
     }
     WiFi.begin(SSID_NAME, SSID_PASSWORD);
