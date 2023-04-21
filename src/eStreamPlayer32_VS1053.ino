@@ -302,17 +302,23 @@ static inline __attribute__((always_inline)) bool htmlUnmodified(const AsyncWebS
 }
 
 void setup() {
+#if ARDUHAL_LOG_LEVEL >= ARDUHAL_LOG_LEVEL_NONE
+    if (ENABLE_DEBUG_ESP32_S2) {
+        delay(2000);
+        Serial.setDebugOutput(true);
+    }
+#endif
     log_i("\n\n\t\t\t\t%s\n", VERSION_STRING);
 
-    const uint32_t idf = ESP_IDF_VERSION_PATCH + ESP_IDF_VERSION_MINOR *10 + ESP_IDF_VERSION_MAJOR * 100;
-    const uint32_t ard = ESP_ARDUINO_VERSION_PATCH + ESP_ARDUINO_VERSION_MINOR * 10 + ESP_ARDUINO_VERSION_MAJOR * 100;
-    log_i("ESP32 IDF Version %d.%d.%d", idf/100%10, idf/10%10 , idf%10);
-    log_i("ESP32 Arduino Version %d.%d.%d", ard/100%10, ard/10%10 , ard%10);    
+    [[maybe_unused]] const uint32_t idf = ESP_IDF_VERSION_PATCH + ESP_IDF_VERSION_MINOR * 10 + ESP_IDF_VERSION_MAJOR * 100;
+    [[maybe_unused]] const uint32_t ard = ESP_ARDUINO_VERSION_PATCH + ESP_ARDUINO_VERSION_MINOR * 10 + ESP_ARDUINO_VERSION_MAJOR * 100;
+    log_i("ESP32 IDF Version %d.%d.%d", idf / 100 % 10, idf / 10 % 10, idf % 10);
+    log_i("ESP32 Arduino Version %d.%d.%d", ard / 100 % 10, ard / 10 % 10, ard % 10);
 
     log_i("CPU: %iMhz", getCpuFrequencyMhz());
     log_d("Heap: %d", ESP.getHeapSize());
     log_d("Free: %d", ESP.getFreeHeap());
-    log_d("PSRAM: %d", ESP.getPsramSize());
+    log_i("PSRAM: %d", ESP.getPsramSize());
     log_d("Free: %d", ESP.getFreePsram());
     log_i("Found %i presets", NUMBER_OF_PRESETS);
 
@@ -340,9 +346,9 @@ void setup() {
     if (SET_STATIC_IP && !WiFi.config(STATIC_IP, GATEWAY, SUBNET, PRIMARY_DNS, SECONDARY_DNS)) {
         log_e("Setting static IP failed");
     }
-    WiFi.begin(SSID, PSK);
+    WiFi.begin(SSID_NAME, SSID_PASSWORD);
     WiFi.setSleep(false);
-    log_i("Connecting to %s...", SSID);
+    log_i("Connecting to %s...", SSID_NAME);
 
     playerQueue = xQueueCreate(5, sizeof(struct playerMessage));
 
