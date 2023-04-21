@@ -5,6 +5,8 @@
 #include <ESPAsyncWebServer.h> /* https://github.com/me-no-dev/ESPAsyncWebServer */
 #include <ESP32_VS1053_Stream.h>
 
+#include "secrets.h"
+
 #include "playList.h"
 #include "index_htm_gz.h"
 #include "icons.h"
