@@ -217,7 +217,7 @@ bool saveItemToFavorites(AsyncWebSocketClient* client, const char* filename, con
 void handleFavoriteToPlaylist(AsyncWebSocketClient* client, const char* filename, const bool startNow) {
     if (PLAYLIST_MAX_ITEMS == playList.size()) {
         log_e("ERROR! Could not add %s to playlist", filename);
-        client->printf("%s\nCould not add '%s' to playlist", MESSAGE_HEADER, filename);
+        client->printf("%s\nERROR: Could not add '%s' to playlist", MESSAGE_HEADER, filename);
         return;
     }
     char path[strlen(FAVORITES_FOLDER) + strlen(filename) + 1];
@@ -225,7 +225,7 @@ void handleFavoriteToPlaylist(AsyncWebSocketClient* client, const char* filename
     File file = FFat.open(path);
     if (!file) {
         log_e("ERROR! Could not open %s", filename);
-        client->printf("%s\nCould not add '%s' to playlist", MESSAGE_HEADER, filename);
+        client->printf("%s\nERROR: Could not add '%s' to playlist", MESSAGE_HEADER, filename);
         return;
     }
     char url[file.size() + 1];

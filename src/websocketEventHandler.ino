@@ -180,18 +180,19 @@ void handleSingleFrame(AsyncWebSocketClient* client, uint8_t* data, size_t len) 
         const uint32_t previousSize = playList.size();
         playList.add({ HTTP_PRESET, "", "", index });
         if (playList.size() == previousSize) {
-            client->printf("%s\nCould not add '%s' to playlist", MESSAGE_HEADER, preset[index].name.c_str());
+            client->printf("%s\nERROR: Could not add '%s' to playlist", MESSAGE_HEADER, preset[index].name.c_str());
             return;
         }
 
         log_d("Added '%s' to playlist", preset[index].name.c_str());
         client->printf("%s\nAdded '%s' to playlist", MESSAGE_HEADER, preset[index].name.c_str());
 
+        upDatePlaylistOnClients();
+
         if (startnow || playList.currentItem() == PLAYLIST_STOPPED) {
             playList.setCurrentItem(playList.size() - 1);
             startItem(playList.currentItem());
         }
-        upDatePlaylistOnClients();
 
     }
 
@@ -221,7 +222,7 @@ void handleSingleFrame(AsyncWebSocketClient* client, uint8_t* data, size_t len) 
         pch = strtok(NULL, "\n");
         if (!pch) return;
         if (playList.size() == PLAYLIST_MAX_ITEMS) {
-            client->printf("%s\nCould not add '%s' to playlist!", MESSAGE_HEADER, pch);
+            client->printf("%s\nERROR: Could not add '%s' to playlist!", MESSAGE_HEADER, pch);
             return;
         }
         handleFavoriteToPlaylist(client, pch, startNow);
@@ -234,7 +235,7 @@ void handleSingleFrame(AsyncWebSocketClient* client, uint8_t* data, size_t len) 
         char filename[strlen(FAVORITES_FOLDER) + strlen(pch) + 1];
         snprintf(filename, sizeof(filename), "%s%s", FAVORITES_FOLDER, pch);
         if (!FFat.remove(filename)) {
-            client->printf("%s\nCould not delete %s", MESSAGE_HEADER, pch);
+            client->printf("%s\nERROR: Could not delete %s", MESSAGE_HEADER, pch);
         } else {
             String s;
             ws.textAll(favoritesToString(s));
@@ -243,7 +244,7 @@ void handleSingleFrame(AsyncWebSocketClient* client, uint8_t* data, size_t len) 
 
     else if (!strcmp("foundlink", pch) || !strcmp("_foundlink", pch)) {
         if (playList.size() == PLAYLIST_MAX_ITEMS) {
-            client->printf("%s\nCould not add new url to playlist", MESSAGE_HEADER);
+            client->printf("%s\nERROR: Could not add new url to playlist", MESSAGE_HEADER);
             return;
         }
         const char* url = strtok(NULL, "\n");
@@ -252,6 +253,7 @@ void handleSingleFrame(AsyncWebSocketClient* client, uint8_t* data, size_t len) 
         if (!name) return;
 
         playList.add({ HTTP_FOUND, name, url, 0 });
+        client->printf("%s\nAdded '%s' to playlist", MESSAGE_HEADER, name);
         upDatePlaylistOnClients();
         const bool startnow = (pch[0] == '_');
         if (startnow || playList.currentItem() == PLAYLIST_STOPPED) {
@@ -268,7 +270,7 @@ void handleSingleFrame(AsyncWebSocketClient* client, uint8_t* data, size_t len) 
 void handleMultiFrame(AsyncWebSocketClient* client, uint8_t* data, size_t len, AwsFrameInfo* info) {
     static String message;
 
-    message.concat(data, len); //todo: check result
+    message.concat(data, len);  //todo: check result
 
     if ((info->index + len) == info->len && info->final) {
         log_d("Final multi frame message for %i bytes", info->index + len);
@@ -293,14 +295,19 @@ void handleMultiFrame(AsyncWebSocketClient* client, uint8_t* data, size_t len, A
             }
 
             const uint32_t itemsAdded{ playList.size() - previousSize };
-            client->printf("%s\nAdded %i items to playlist", MESSAGE_HEADER, itemsAdded);
-            log_d("Added %i items to playlist", itemsAdded);
 
-            if (itemsAdded && (startnow || playList.currentItem() == PLAYLIST_STOPPED)) {
+            if (!itemsAdded) {
+                client->printf("%s\nERROR: Could not add items to playlist", MESSAGE_HEADER);
+                return;
+            }
+
+            client->printf("%s\nAdded %i items to playlist", MESSAGE_HEADER, itemsAdded);
+
+            if (startnow || playList.currentItem() == PLAYLIST_STOPPED) {
                 playList.setCurrentItem(previousSize);
                 startItem(playList.currentItem());
             }
-            if (itemsAdded) upDatePlaylistOnClients();
+            upDatePlaylistOnClients();
         }
         message.clear();
     }
