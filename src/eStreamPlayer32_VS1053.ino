@@ -10,7 +10,6 @@
 #include "playList.h"
 #include "index_htm_gz.h"
 #include "icons.h"
-#include "system_setup.h"
 
 static const char* VERSION_STRING = "eStreamPlayer32 for VS1053 v2.0.2"
                                     "<br><br>"
@@ -84,7 +83,7 @@ void playerTask(void* parameter) {
             }
         }
 
-        constexpr const auto MAX_UPDATE_FREQ_HZ = 6;
+        constexpr const auto MAX_UPDATE_FREQ_HZ = 2;
         constexpr const auto UPDATE_INTERVAL_MS = 1000 / MAX_UPDATE_FREQ_HZ;
         static unsigned long previousTime = millis();
         static size_t previousPosition = 0;
