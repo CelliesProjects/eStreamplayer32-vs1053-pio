@@ -4,7 +4,7 @@
 <head>
   <script>
     //setting for dev/debug */
-    const debugip = "192.168.0.101";  //change this to the esp32 ip for remote running of this page
+    const debugip = "192.168.0.103";  //change this to the esp32 ip for remote running of this page
   </script>
   <meta charset="utf-8">
   <meta name="viewport" content="minimal-ui,width=device-width,initial-scale=1">
@@ -659,11 +659,7 @@
             $('#progress2, #progressinput').hide();
             $('.plitem').css("background-color", "");
             currentItem = parseInt(command[1]);
-            if (-1 == currentItem) {
-              $('#playerstatus, #showstation').html("Nothing playing");
-            } else {
-              $('.plitem').eq(command[1]).css("background-color", "cadetblue");
-            }
+            $('.plitem').eq(command[1]).css("background-color", "cadetblue");
             break;
 
           case "playlist":

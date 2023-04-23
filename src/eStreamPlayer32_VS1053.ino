@@ -11,9 +11,7 @@
 #include "index_htm_gz.h"
 #include "icons.h"
 
-static const char* VERSION_STRING = "eStreamPlayer32 for VS1053 v2.0.2"
-                                    "<br><br>"
-                                    "Search API provided by: <a href=\"https://www.radio-browser.info/\" target=\"_blank\">radio-browser.info</a>";
+static const char* VERSION_STRING = "eStreamPlayer32 for VS1053 2.0.2";
 
 struct playerMessage {
     enum playerAction { SET_VOLUME,
@@ -49,6 +47,7 @@ constexpr const auto NUMBER_OF_PRESETS = sizeof(preset) / sizeof(source);
 void playerTask(void* parameter) {
     log_i("Starting VS1053 codec...");
 
+    SPI.setHwCs(true);
     SPI.begin(SPI_CLK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN);
 
     ESP32_VS1053_Stream audio;
@@ -83,7 +82,7 @@ void playerTask(void* parameter) {
             }
         }
 
-        constexpr const auto MAX_UPDATE_FREQ_HZ = 2;
+        constexpr const auto MAX_UPDATE_FREQ_HZ = 4;
         constexpr const auto UPDATE_INTERVAL_MS = 1000 / MAX_UPDATE_FREQ_HZ;
         static unsigned long previousTime = millis();
         static size_t previousPosition = 0;
@@ -155,10 +154,11 @@ void startNextItem() {
 }
 
 void playlistHasEnded() {
-    audio_showstation("Nothing playing");
-    audio_showstreamtitle(VERSION_STRING);
+    const char* mess = "Search API provided by: <a href=\"https://www.radio-browser.info/\" target=\"_blank\">radio-browser.info</a>";
+    audio_showstreamtitle(mess);
     playList.setCurrentItem(PLAYLIST_STOPPED);
     updateCurrentItemOnClients();
+    audio_showstation(VERSION_STRING);
 }
 
 void upDatePlaylistOnClients() {
