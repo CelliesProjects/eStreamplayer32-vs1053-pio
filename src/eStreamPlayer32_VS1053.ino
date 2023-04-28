@@ -1,11 +1,11 @@
 #include <Arduino.h>
 #include <FFat.h>
 #include <WiFi.h>
-#include <AsyncTCP.h>          /* https://github.com/me-no-dev/AsyncTCP */
-#include <ESPAsyncWebServer.h> /* https://github.com/me-no-dev/ESPAsyncWebServer */
-#include <ESP32_VS1053_Stream.h>
+#include <AsyncTCP.h>            /* https://github.com/me-no-dev/AsyncTCP */
+#include <ESPAsyncWebServer.h>   /* https://github.com/me-no-dev/ESPAsyncWebServer */
+#include <ESP32_VS1053_Stream.h> /* https://github.com/CelliesProjects/ESP32_VS1053_Stream */
 
-#include "secrets.h"
+#include "secrets.h"             /* Untracked file containing the WiFi credentials*/
 
 #include "playList.h"
 #include "index_htm_gz.h"
