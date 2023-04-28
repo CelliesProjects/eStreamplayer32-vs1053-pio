@@ -147,10 +147,8 @@ void startItem(uint8_t const index, size_t offset = 0) {
 void startNextItem() {
     if (playList.currentItem() < playList.size() - 1) {
         playList.setCurrentItem(playList.currentItem() + 1);
-        log_i("starting next item %i", playList.currentItem());
         startItem(playList.currentItem());
     } else {
-        log_i("playlist has ended with item %i", playList.currentItem());
         playlistHasEnded();
     }
 }
