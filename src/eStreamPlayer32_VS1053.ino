@@ -147,8 +147,10 @@ void startItem(uint8_t const index, size_t offset = 0) {
 void startNextItem() {
     if (playList.currentItem() < playList.size() - 1) {
         playList.setCurrentItem(playList.currentItem() + 1);
+        log_i("starting next item %i", playList.currentItem());
         startItem(playList.currentItem());
     } else {
+        log_i("playlist has ended with item %i", playList.currentItem());
         playlistHasEnded();
     }
 }
@@ -539,7 +541,7 @@ void setup() {
     const BaseType_t result = xTaskCreatePinnedToCore(
         playerTask,            /* Function to implement the task */
         "playerTask",          /* Name of the task */
-        8000,                  /* Stack size in BYTES! */
+        10000,                 /* Stack size in BYTES! */
         NULL,                  /* Task input parameter */
         3 | portPRIVILEGE_BIT, /* Priority of the task */
         NULL,                  /* Task handle. */
