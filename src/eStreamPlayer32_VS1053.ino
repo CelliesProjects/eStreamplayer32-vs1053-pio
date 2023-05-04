@@ -5,7 +5,7 @@
 #include <ESPAsyncWebServer.h>   /* https://github.com/me-no-dev/ESPAsyncWebServer */
 #include <ESP32_VS1053_Stream.h> /* https://github.com/CelliesProjects/ESP32_VS1053_Stream */
 
-#include "secrets.h"             /* Untracked file containing the WiFi credentials*/
+#include "secrets.h" /* Untracked file containing the WiFi credentials*/
 
 #include "playList.h"
 #include "index_htm_gz.h"
@@ -302,6 +302,7 @@ static inline __attribute__((always_inline)) bool htmlUnmodified(const AsyncWebS
     return request->hasHeader(HEADER_MODIFIED_SINCE) && request->header(HEADER_MODIFIED_SINCE).equals(date);
 }
 
+// cppcheck-suppress unusedFunction
 void setup() {
 #if ARDUHAL_LOG_LEVEL >= ARDUHAL_LOG_LEVEL_NONE
     if (ENABLE_DEBUG_ESP32_S2) {
@@ -317,10 +318,10 @@ void setup() {
     log_i("ESP32 Arduino Version %d.%d.%d", ard / 100 % 10, ard / 10 % 10, ard % 10);
 
     log_i("CPU: %iMhz", getCpuFrequencyMhz());
-    log_d("Heap: %d", ESP.getHeapSize());
-    log_d("Free: %d", ESP.getFreeHeap());
+    log_i("Heap: %d", ESP.getHeapSize());
+    log_i("Free: %d", ESP.getFreeHeap());
     log_i("PSRAM: %d", ESP.getPsramSize());
-    log_d("Free: %d", ESP.getFreePsram());
+    log_i("Free: %d", ESP.getFreePsram());
     log_i("Found %i presets", NUMBER_OF_PRESETS);
 
     /* check if a ffat partition is defined and halt the system if it is not defined*/
@@ -353,8 +354,11 @@ void setup() {
     if (SET_STATIC_IP && !WiFi.config(localip, gateway, subnet, primarydns)) {
         log_e("Setting static IP failed");
     }
+    if (psramFound())
+        WiFi.useStaticBuffers(true);
     WiFi.begin(SSID_NAME, SSID_PASSWORD);
     WiFi.setSleep(false);
+
     log_i("Connecting to %s...", SSID_NAME);
 
     playerQueue = xQueueCreate(5, sizeof(struct playerMessage));
@@ -373,6 +377,11 @@ void setup() {
 
     log_i("WiFi connected - IP %s", WiFi.localIP().toString().c_str());
 
+    log_i("Heap: %d", ESP.getHeapSize());
+    log_i("Free: %d", ESP.getFreeHeap());
+    log_i("PSRAM: %d", ESP.getPsramSize());
+    log_i("Free: %d", ESP.getFreePsram());
+    
     configTzTime(TIMEZONE, NTP_POOL);
 
     struct tm timeinfo {};
@@ -563,6 +572,7 @@ void setup() {
 //                                   L O O P                                             *
 //****************************************************************************************
 
+// cppcheck-suppress unusedFunction
 void loop() {
 }
 
