@@ -123,7 +123,7 @@ String percentEncode(const char* plaintext) {
 
                 default:
                     result.concat("?");
-                    log_w("ERROR: Unhandled char 0x%x", plaintext[cnt]);
+                    log_d("ERROR: Unhandled char 0x%x", plaintext[cnt]);
             }
         } else
             result.concat(plaintext[cnt]);
