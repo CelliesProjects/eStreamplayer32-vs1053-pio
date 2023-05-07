@@ -317,6 +317,8 @@ void setup() {
     log_i("ESP32 IDF Version %d.%d.%d", idf / 100 % 10, idf / 10 % 10, idf % 10);
     log_i("ESP32 Arduino Version %d.%d.%d", ard / 100 % 10, ard / 10 % 10, ard % 10);
 
+    log_i("Git version tag: %s", GIT_VERSION);
+
     log_i("CPU: %iMhz", getCpuFrequencyMhz());
     log_i("Heap: %d", ESP.getHeapSize());
     log_i("Free: %d", ESP.getFreeHeap());
@@ -351,11 +353,13 @@ void setup() {
     subnet.fromString(SUBNET);
     primarydns.fromString(PRIMARY_DNS);
 
+    if (psramFound())
+        WiFi.useStaticBuffers(true);
+        
     if (SET_STATIC_IP && !WiFi.config(localip, gateway, subnet, primarydns)) {
         log_e("Setting static IP failed");
     }
-    if (psramFound())
-        WiFi.useStaticBuffers(true);
+
     WiFi.begin(SSID_NAME, SSID_PASSWORD);
     WiFi.setSleep(false);
 
@@ -381,7 +385,7 @@ void setup() {
     log_i("Free: %d", ESP.getFreeHeap());
     log_i("PSRAM: %d", ESP.getPsramSize());
     log_i("Free: %d", ESP.getFreePsram());
-    
+
     configTzTime(TIMEZONE, NTP_POOL);
 
     struct tm timeinfo {};
@@ -548,7 +552,7 @@ void setup() {
     const BaseType_t result = xTaskCreatePinnedToCore(
         playerTask,            /* Function to implement the task */
         "playerTask",          /* Name of the task */
-        10000,                 /* Stack size in BYTES! */
+        8000,                  /* Stack size in BYTES! */
         NULL,                  /* Task input parameter */
         3 | portPRIVILEGE_BIT, /* Priority of the task */
         NULL,                  /* Task handle. */
