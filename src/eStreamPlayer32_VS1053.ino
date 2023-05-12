@@ -57,7 +57,15 @@ void playerTask(void* parameter) {
         while (true) delay(100);
     }
 
+    log_i("CPU: %iMhz", getCpuFrequencyMhz());
+    log_i("Heap: %d", ESP.getHeapSize());
+    log_i("Free: %d", ESP.getFreeHeap());
+    log_i("PSRAM: %d", ESP.getPsramSize());
+    log_i("Free: %d", ESP.getFreePsram());
+    log_i("Found %i presets", NUMBER_OF_PRESETS);
+
     log_i("Ready to rock!");
+
     while (true) {
         playerMessage msg;
         if (xQueueReceive(playerQueue, &msg, pdMS_TO_TICKS(25)) == pdPASS) {
@@ -319,13 +327,6 @@ void setup() {
 
     log_i("Git version tag: %s", GIT_VERSION);
 
-    log_i("CPU: %iMhz", getCpuFrequencyMhz());
-    log_i("Heap: %d", ESP.getHeapSize());
-    log_i("Free: %d", ESP.getFreeHeap());
-    log_i("PSRAM: %d", ESP.getPsramSize());
-    log_i("Free: %d", ESP.getFreePsram());
-    log_i("Found %i presets", NUMBER_OF_PRESETS);
-
     /* check if a ffat partition is defined and halt the system if it is not defined*/
     if (!esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_FAT, "ffat")) {
         log_e("FATAL ERROR! No FFat partition defined. System is halted.\nCheck 'Tools>Partition Scheme' in the Arduino IDE and select a partition table with a FFat partition.");
@@ -380,11 +381,6 @@ void setup() {
     }
 
     log_i("WiFi connected - IP %s", WiFi.localIP().toString().c_str());
-
-    log_i("Heap: %d", ESP.getHeapSize());
-    log_i("Free: %d", ESP.getFreeHeap());
-    log_i("PSRAM: %d", ESP.getPsramSize());
-    log_i("Free: %d", ESP.getFreePsram());
 
     configTzTime(TIMEZONE, NTP_POOL);
 
