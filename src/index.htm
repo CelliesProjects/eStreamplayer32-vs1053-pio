@@ -595,8 +595,8 @@
         SEARCH.innerHTML += '<p class="errormessage pagebutton" id="nextpage"><img src="/searchicon.svg" class="icon"><span class="text">More \'' + searchquery + '\' results</span></p>';
         return;
       }
-      const pos = item.url.search(/[;?]/g);
-      const strippedurl = item.url.substring(0, pos !== -1 ? pos : item.url.length);
+      const pos = item.url_resolved.search(/[;?]/g);
+      const strippedurl = item.url_resolved.substring(0, pos !== -1 ? pos : item.url_resolved.length);
       var cnt = 0;
       while (cnt < index) if (arr[cnt++].url == strippedurl) return;
 
@@ -607,7 +607,7 @@
       SEARCH.innerHTML += '<p class="foundlink" data-name="' + item.name + '" data-url="' + strippedurl +
         '" data-station-uuid="' + item.stationuuid + '"title="' + title +
         '"><img src="/searchicon.svg" class="icon"><img src="/starticon.svg" class="icon starticon">' +
-        (item.url.startsWith('https') ? '<img src="/nosslicon.svg" class="icon nosslicon" title="Click here to start this url in unsecure (fast) mode.\n(which might fail)">' : '') +
+        (item.url_resolved.startsWith('https') ? '<img src="/nosslicon.svg" class="icon nosslicon" title="Click here to start this url in unsecure (fast) mode.\n(which might fail)">' : '') +
         '<span class="text">' + item.name + '</span></p>';
     }
     const itemsPerPage = 30;
