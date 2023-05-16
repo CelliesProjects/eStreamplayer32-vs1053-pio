@@ -57,12 +57,10 @@ void playerTask(void* parameter) {
         while (true) delay(100);
     }
 
-    log_i("CPU: %iMhz", getCpuFrequencyMhz());
-    log_i("Heap: %d", ESP.getHeapSize());
-    log_i("Free: %d", ESP.getFreeHeap());
-    log_i("PSRAM: %d", ESP.getPsramSize());
-    log_i("Free: %d", ESP.getFreePsram());
-    log_i("Found %i presets", NUMBER_OF_PRESETS);
+    log_d("Heap: %d", ESP.getHeapSize());
+    log_d("Free: %d", ESP.getFreeHeap());
+    log_d("PSRAM: %d", ESP.getPsramSize());
+    log_d("Free: %d", ESP.getFreePsram());
 
     log_i("Ready to rock!");
 
@@ -324,8 +322,9 @@ void setup() {
     [[maybe_unused]] const uint32_t ard = ESP_ARDUINO_VERSION_PATCH + ESP_ARDUINO_VERSION_MINOR * 10 + ESP_ARDUINO_VERSION_MAJOR * 100;
     log_i("ESP32 IDF Version %d.%d.%d", idf / 100 % 10, idf / 10 % 10, idf % 10);
     log_i("ESP32 Arduino Version %d.%d.%d", ard / 100 % 10, ard / 10 % 10, ard % 10);
-
+    log_i("CPU: %iMhz", getCpuFrequencyMhz());
     log_i("Git version tag: %s", GIT_VERSION);
+    log_i("Found %i presets", NUMBER_OF_PRESETS);
 
     /* check if a ffat partition is defined and halt the system if it is not defined*/
     if (!esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_FAT, "ffat")) {
