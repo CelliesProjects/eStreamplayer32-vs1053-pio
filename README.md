@@ -60,10 +60,17 @@ const char *SSID_PASSWORD = "wifi_password";
 <br>**Note: Take care to select the same partition table when updating the app otherwise the fatfs partition will be formatted.**
 9.  Browse to the ip address shown on the serial port.
 
-### Software needed for local file playback
+### Setup for local file playback
 
-A [lamp](https://en.wikipedia.org/wiki/LAMP_%28software_bundle%29) or llmp webstack is required to serve local files.
-Apache2 and lighttpd were tested and should work. The php script should be fairly version agnostic.
+-  A [lamp](https://en.wikipedia.org/wiki/LAMP_%28software_bundle%29) or llmp webstack is required to serve local files.
+Apache2 and lighttpd were tested and should work.
+-  The following file headers should be sent for supported filetypes:
+<br>`MP3` `audio/mpeg`
+<br>`OGG` `audio/ogg` or `application/ogg`
+<br>`AAC` `audio/aac`
+<br>`AAC+` `audio/aacp`
+-  The php script found at `src/copy to server/eSP32_vs1053.php` has to be copied to the root of the music library. The script is fairly version agnostic.
+
 
 
 ### Libraries used in the web interface
