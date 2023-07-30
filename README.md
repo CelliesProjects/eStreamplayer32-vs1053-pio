@@ -54,11 +54,11 @@ const char *SSID_PASSWORD = "wifi_password";
 
 #endif
 ```
-8.  On first boot or after a flash erase the fatfs will be formatted. This will take a couple of seconds depending on the size of the fatfs.
+3.  On first boot or after a flash erase the fatfs will be formatted. This will take from a couple of seconds up to a minute depending on the size of the fatfs.
 <br>You can monitor the boot/formatting progress on the serial port.
 <br>Flashing an update will not erase the fatfs data.
 <br>**Note: Take care to select the same partition table when updating the app otherwise the fatfs partition will be formatted.**
-9.  Browse to the ip address shown on the serial port.
+4.  Browse to the ip address shown on the serial port.
 
 ### Setup for local file playback
 
@@ -69,12 +69,10 @@ Apache2 and lighttpd were tested and should work.
 <br>`OGG` `audio/ogg` or `application/ogg`
 <br>`AAC` `audio/aac`
 <br>`AAC+` `audio/aacp`
--  The php script found at `src/copy to server/eSP32_vs1053.php` has to be copied to the root of the music library. The script is fairly version agnostic.
-
-
+<br>With a vanilla LAMP setup this will be the default.
+-  The php script `eSP32_vs1053.php` has to be copied to the root of the music library. The script is fairly version agnostic.
 
 ### Libraries used in the web interface
-
 
 -   The [radio-browser.info](https://www.radio-browser.info/) API is used for the search. The returned data is in the public domain.<br>See [de1.api.radio-browser.info](https://de1.api.radio-browser.info/) for API information.
 -  The used icons are from [material.io](https://material.io/tools/icons/?style=baseline) and are [available under Apache2.0 license](https://www.apache.org/licenses/LICENSE-2.0.html).
@@ -82,10 +80,11 @@ Apache2 and lighttpd were tested and should work.
 -  [Google Roboto font](https://fonts.google.com/specimen/Roboto) which is [available under Apache2.0 license](https://www.apache.org/licenses/LICENSE-2.0.html).
 -  [jQuery 3.4.1](https://code.jquery.com/jquery-3.4.1.js) which is [available under MIT license](https://jquery.org/license/).
 
-````
+### License
+
 MIT License
 
-Copyright (c) 2020 Cellie
+Copyright (c) 2023 Cellie
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -104,4 +103,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-````
