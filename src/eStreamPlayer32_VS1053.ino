@@ -11,8 +11,6 @@
 #include "index_htm_gz.h"
 #include "icons.h"
 
-static const char* VERSION_STRING = "eStreamPlayer32 for VS1053 2.0.2";
-
 struct playerMessage {
     enum playerAction { SET_VOLUME,
                         CONNECTTOHOST,
@@ -160,11 +158,12 @@ void startNextItem() {
 }
 
 void playlistHasEnded() {
-    const char* mess = "Search API provided by: <a href=\"https://www.radio-browser.info/\" target=\"_blank\">radio-browser.info</a>";
-    audio_showstreamtitle(mess);
+    audio_showstreamtitle("Search API provided by: <a href=\"https://www.radio-browser.info/\" target=\"_blank\"><span style=\"white-space:nowrap;\">radio-browser.info</span></a>");
     playList.setCurrentItem(PLAYLIST_STOPPED);
     updateCurrentItemOnClients();
-    audio_showstation(VERSION_STRING);
+    char versionString[50];
+    snprintf(versionString, sizeof(versionString), "eStreamPlayer %s", GIT_VERSION);
+    audio_showstation(versionString);
 }
 
 void upDatePlaylistOnClients() {
@@ -316,14 +315,13 @@ void setup() {
         Serial.setDebugOutput(true);
     }
 #endif
-    log_i("\n\n\t\t\t\t%s\n", VERSION_STRING);
+    log_i("\n\n\t\t\t\teStreamplayer version: %s\n", GIT_VERSION);
 
     [[maybe_unused]] const uint32_t idf = ESP_IDF_VERSION_PATCH + ESP_IDF_VERSION_MINOR * 10 + ESP_IDF_VERSION_MAJOR * 100;
     [[maybe_unused]] const uint32_t ard = ESP_ARDUINO_VERSION_PATCH + ESP_ARDUINO_VERSION_MINOR * 10 + ESP_ARDUINO_VERSION_MAJOR * 100;
     log_i("ESP32 IDF Version %d.%d.%d", idf / 100 % 10, idf / 10 % 10, idf % 10);
     log_i("ESP32 Arduino Version %d.%d.%d", ard / 100 % 10, ard / 10 % 10, ard % 10);
     log_i("CPU: %iMhz", getCpuFrequencyMhz());
-    log_i("Git version tag: %s", GIT_VERSION);
     log_i("Found %i presets", NUMBER_OF_PRESETS);
 
     /* check if a ffat partition is defined and halt the system if it is not defined*/
