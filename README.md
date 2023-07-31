@@ -1,7 +1,5 @@
 # eStreamPlayer32 for VS1053
 
-#### July 31 2023 - This project will not be continued as an Arduino IDE project.<br>Development will continue as a PlatformIO project at [eStreamplayer32-vs1053-pio](https://github.com/CelliesProjects/eStreamplayer32-vs1053-pio). 
-
 A web-based esp32 music player for webradio and mp3/ogg/aac/aac+ files from a lamp or llmp server.
 Sound output comes from a separate VS1053 mp3/aac/ogg/wav decoder breakout board.
 The web interface has [radio-browser.info](https://www.radio-browser.info/) search integrated.
