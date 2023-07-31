@@ -1,25 +1,25 @@
-# eStreamPlayer32 for VS1053
+# eStreamPlayer32 VS1053 in PlatformIO
 
 A web-based esp32 music player for webradio and mp3/ogg/aac/aac+ files from a lamp or llmp server.
-Sound output comes from a separate VS1053 mp3/aac/ogg/wav decoder breakout board.
-The web interface has [radio-browser.info](https://www.radio-browser.info/) search integrated.
+<br>Sound output comes from a separate VS1053 mp3/aac/ogg/wav decoder breakout board.
+<br>The web interface has [radio-browser](https://www.radio-browser.info/) station search integrated.
 
 Supports http, https (insecure mode)/chunked streams.
 
 Plays mp3, ogg, aac and aac+ streams.
 
-### What does it do?
+### What can you do with this app?
 
--  Play your local files (over http)
--  Play preset radio stations
--  Search for new radio stations on [radio-browser.info](https://www.radio-browser.info/) and save these to favorites
+-  Play your local files.
+-  Play preset radio stations.
+-  Search for new radio stations on [radio-browser.info](https://www.radio-browser.info/) and save found stations to favorites.
  
  You control the music player with a browser on your phone, pc or tablet.
 
 
 ### Local file playback limitations 
 
-eStreamPlayer is written for playback over http(s). What this means is that you will need a (lamp or llmp) webserver to play back your local files.<br>This is because the esp32 does not speak NFS or SMB which are common ways to share files over a network. Instead eStreamPlayer uses a php script on the server to navigate the music folders. Copy this script to the server to use your music library.<br>**This is totally insecure and should only be used on your own LAN!**
+eStreamPlayer is written for playback over http(s). What this means is that you will need a (lamp or llmp) webserver to play back your local files.<br>This is because the esp32 does not speak NFS or SMB which are common ways to share files over a network. Instead eStreamPlayer uses a php script on the server to navigate the music folders. Copy this script to the server to use your music library.<br>**This is totally insecure and should only be used on a trusted LAN!**
 
 But if you don't have a local music server you can still use eStreamPlayer to tune in to web radio stations and add your own radio stations to presets and favorites.
 
@@ -54,7 +54,7 @@ const char *SSID_PASSWORD = "wifi_password";
 
 #endif
 ```
-3.  On first boot or after a flash erase the fatfs will be formatted. This will take from a couple of seconds up to a minute depending on the size of the fatfs.
+3.  On first boot or after a flash erase the fatfs will be formatted. This will take from a couple of seconds up to a minute depending on the size of the filesystem.
 <br>You can monitor the boot/formatting progress on the serial port.
 <br>Flashing an update will not erase the fatfs data.
 <br>**Note: Take care to select the same partition table when updating the app otherwise the fatfs partition will be formatted.**
@@ -74,11 +74,13 @@ Apache2 and lighttpd were tested and should work.
 
 ### Libraries used in the web interface
 
--   The [radio-browser.info](https://www.radio-browser.info/) API is used for the search. The returned data is in the public domain.<br>See [de1.api.radio-browser.info](https://de1.api.radio-browser.info/) for API information.
--  The used icons are from [material.io](https://material.io/tools/icons/?style=baseline) and are [available under Apache2.0 license](https://www.apache.org/licenses/LICENSE-2.0.html).
+-   The free -as in beer- [radio-browser.info](https://www.radio-browser.info/) API is used for the search. The returned data is in the public domain.<br>See [de1.api.radio-browser.info](https://de1.api.radio-browser.info/) for API information.
+-  The icons are from [material.io](https://material.io/tools/icons/?style=baseline) and are [available under Apache2.0 license](https://www.apache.org/licenses/LICENSE-2.0.html).
 -  [Reconnecting WebSocket](https://github.com/joewalnes/reconnecting-websocket) which is [available under MIT licence](https://github.com/joewalnes/reconnecting-websocket/blob/master/LICENSE.txt).
 -  [Google Roboto font](https://fonts.google.com/specimen/Roboto) which is [available under Apache2.0 license](https://www.apache.org/licenses/LICENSE-2.0.html).
 -  [jQuery 3.4.1](https://code.jquery.com/jquery-3.4.1.js) which is [available under MIT license](https://jquery.org/license/).
+
+The Google Roboto font and jQuery are fetched from the net. Your downloads will be tracked by the respective providers for this 'free' data. 
 
 ### License
 
