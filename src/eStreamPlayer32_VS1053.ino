@@ -93,8 +93,6 @@ void playerTask(void* parameter) {
         static unsigned long savedTime = millis();
         dataWaiting = audio.position() >= (_savedPosition + VS1053_MAX_BYTES_PER_LOOP) ? true : false;
 
-        if (dataWaiting) log_i("moved %i bytes or more, so we assume still more -unplayable- metadata is waiting", VS1053_MAX_BYTES_PER_LOOP - 1);
-
         if (ws.count() && audio.size() && millis() - savedTime > UPDATE_INTERVAL_MS && audio.position() != _savedPosition) {
             ws.printfAll("progress\n%i\n%i\n", audio.position(), audio.size());
             savedTime = millis();
