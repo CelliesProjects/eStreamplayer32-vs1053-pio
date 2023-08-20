@@ -32,7 +32,7 @@ static const char* MESSAGE_HEADER = "message";
 static const char* CURRENT_HEADER = "currentPLitem";
 
 static auto _playerVolume = VS1053_INITIALVOLUME;
-static size_t _currentPosition = 0;
+static size_t _savedPosition = 0;
 static size_t _currentSize = 0;
 static bool _paused = false;
 
@@ -48,7 +48,7 @@ void playerTask(void* parameter) {
     SPI.setHwCs(true);
     SPI.begin(SPI_CLK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN);
 
-    ESP32_VS1053_Stream audio;
+    static ESP32_VS1053_Stream audio;
 
     if (!audio.startDecoder(VS1053_CS_PIN, VS1053_DCS_PIN, VS1053_DREQ_PIN) || !audio.isChipConnected()) {
         log_e("VS1053 board could not init\nSystem halted");
@@ -62,22 +62,24 @@ void playerTask(void* parameter) {
 
     log_i("Ready to rock!");
 
+    static bool dataWaiting = false;
+
     while (true) {
         playerMessage msg;
-        if (xQueueReceive(playerQueue, &msg, pdMS_TO_TICKS(25)) == pdPASS) {
+        if (xQueueReceive(playerQueue, &msg, pdMS_TO_TICKS(dataWaiting ? 0 : 25)) == pdPASS) {
             log_d("Minimum free stack bytes: %i", uxTaskGetStackHighWaterMark(NULL));
             switch (msg.action) {
                 case playerMessage::SET_VOLUME:
                     audio.setVolume(msg.value);
                     break;
-                case playerMessage::CONNECTTOHOST:
+                case playerMessage::CONNECTTOHOST:                
                     audio.stopSong();
                     _paused = false;
                     ws.textAll("status\nplaying\n");
                     if (!audio.connecttohost(msg.url, LIBRARY_USER, LIBRARY_PWD, msg.value))
                         startNextItem();
                     _currentSize = audio.size();
-                    _currentPosition = audio.position();
+                    _savedPosition = audio.position();                
                     break;
                 case playerMessage::STOPSONG:
                     audio.stopSong();
@@ -88,13 +90,15 @@ void playerTask(void* parameter) {
 
         constexpr const auto MAX_UPDATE_FREQ_HZ = 4;
         constexpr const auto UPDATE_INTERVAL_MS = 1000 / MAX_UPDATE_FREQ_HZ;
-        static unsigned long previousTime = millis();
-        static size_t previousPosition = 0;
-        if (ws.count() && audio.size() && millis() - previousTime > UPDATE_INTERVAL_MS && audio.position() != previousPosition) {
+        static unsigned long savedTime = millis();
+        dataWaiting = audio.position() >= (_savedPosition + VS1053_MAX_BYTES_PER_LOOP) ? true : false;
+
+        if (dataWaiting) log_i("moved %i bytes or more, so we assume still more -unplayable- metadata is waiting", VS1053_MAX_BYTES_PER_LOOP - 1);
+
+        if (ws.count() && audio.size() && millis() - savedTime > UPDATE_INTERVAL_MS && audio.position() != _savedPosition) {
             ws.printfAll("progress\n%i\n%i\n", audio.position(), audio.size());
-            previousTime = millis();
-            previousPosition = audio.position();
-            _currentPosition = audio.position();
+            savedTime = millis();
+            _savedPosition = audio.position();
         }
         audio.loop();
     }

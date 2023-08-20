@@ -15,7 +15,7 @@ void websocketEventHandler(AsyncWebSocket* server, AsyncWebSocketClient* client,
                 client->printf("%s\n%i\n", VOLUME_HEADER, _playerVolume);
                 client->text(showstation);
                 client->text(streamtitle);
-                if (_paused && _currentSize) client->printf("progress\n%i\n%i\n", _currentPosition, _currentSize);
+                if (_paused && _currentSize) client->printf("progress\n%i\n%i\n", _savedPosition, _currentSize);
             }
             break;
         case WS_EVT_DISCONNECT:
@@ -55,7 +55,7 @@ void handleSingleFrame(AsyncWebSocketClient* client, uint8_t* data, size_t len) 
     if (_paused && !strcmp("unpause", pch)) {
         playerMessage msg;
         msg.action = playerMessage::CONNECTTOHOST;
-        msg.value = _currentPosition;
+        msg.value = _savedPosition;
         snprintf(msg.url, PLAYLIST_MAX_URL_LENGTH, playList.url(playList.currentItem()).c_str());
         xQueueSend(playerQueue, &msg, portMAX_DELAY);
         return;
