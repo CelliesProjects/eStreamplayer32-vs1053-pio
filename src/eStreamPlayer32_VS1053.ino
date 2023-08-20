@@ -91,7 +91,7 @@ void playerTask(void* parameter) {
         constexpr const auto MAX_UPDATE_FREQ_HZ = 4;
         constexpr const auto UPDATE_INTERVAL_MS = 1000 / MAX_UPDATE_FREQ_HZ;
         static unsigned long savedTime = millis();
-        dataWaiting = audio.position() >= (_savedPosition + VS1053_MAX_BYTES_PER_LOOP) ? true : false;
+        dataWaiting = audio.position() >= (_savedPosition + VS1053_MAX_BYTES_PER_LOOP);
 
         if (ws.count() && audio.size() && millis() - savedTime > UPDATE_INTERVAL_MS && audio.position() != _savedPosition) {
             ws.printfAll("progress\n%i\n%i\n", audio.position(), audio.size());
