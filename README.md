@@ -8,6 +8,8 @@ Supports http, https (insecure mode)/chunked streams.
 
 Plays mp3, ogg, aac and aac+ streams.
 
+Compatible with esp32, esp32-s2 and probably esp32-s3. (my s3 mini died on me)
+
 ### What can you do with this app?
 
 -  Play your local files.
