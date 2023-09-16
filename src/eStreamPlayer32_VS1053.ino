@@ -11,11 +11,15 @@
 #include "index_htm_gz.h"
 #include "icons.h"
 
-struct playerMessage {
-    enum playerAction { SET_VOLUME,
-                        CONNECTTOHOST,
-                        STOPSONG,
-                        SETTONE };
+struct playerMessage
+{
+    enum playerAction
+    {
+        SET_VOLUME,
+        CONNECTTOHOST,
+        STOPSONG,
+        SETTONE
+    };
     playerAction action;
     char url[PLAYLIST_MAX_URL_LENGTH];
     size_t value = 0;
@@ -26,10 +30,10 @@ static playList_t playList;
 static AsyncWebServer server(80);
 static AsyncWebSocket ws("/ws");
 
-static const char* FAVORITES_FOLDER = "/"; /* if this is a folder use a closing slash */
-static const char* VOLUME_HEADER = "volume";
-static const char* MESSAGE_HEADER = "message";
-static const char* CURRENT_HEADER = "currentPLitem";
+static const char *FAVORITES_FOLDER = "/"; /* if this is a folder use a closing slash */
+static const char *VOLUME_HEADER = "volume";
+static const char *MESSAGE_HEADER = "message";
+static const char *CURRENT_HEADER = "currentPLitem";
 
 static auto _playerVolume = VS1053_INITIALVOLUME;
 static size_t _savedPosition = 0;
@@ -42,7 +46,8 @@ constexpr const auto NUMBER_OF_PRESETS = sizeof(preset) / sizeof(source);
 //                                   P L A Y E R _ T A S K                               *
 //****************************************************************************************
 
-void playerTask(void* parameter) {
+void playerTask(void *parameter)
+{
     log_i("Starting VS1053 codec...");
 
     SPI.setHwCs(true);
@@ -50,9 +55,11 @@ void playerTask(void* parameter) {
 
     static ESP32_VS1053_Stream audio;
 
-    if (!audio.startDecoder(VS1053_CS_PIN, VS1053_DCS_PIN, VS1053_DREQ_PIN) || !audio.isChipConnected()) {
+    if (!audio.startDecoder(VS1053_CS_PIN, VS1053_DCS_PIN, VS1053_DREQ_PIN) || !audio.isChipConnected())
+    {
         log_e("VS1053 board could not init\nSystem halted");
-        while (true) delay(100);
+        while (true)
+            delay(100);
     }
 
     log_d("Heap: %d", ESP.getHeapSize());
@@ -64,27 +71,31 @@ void playerTask(void* parameter) {
 
     static bool dataWaiting = false;
 
-    while (true) {
+    while (true)
+    {
         playerMessage msg;
-        if (xQueueReceive(playerQueue, &msg, pdMS_TO_TICKS(dataWaiting ? 0 : 25)) == pdPASS) {
+        if (xQueueReceive(playerQueue, &msg, pdMS_TO_TICKS(dataWaiting ? 0 : 25)) == pdPASS)
+        {
             log_d("Minimum free stack bytes: %i", uxTaskGetStackHighWaterMark(NULL));
-            switch (msg.action) {
-                case playerMessage::SET_VOLUME:
-                    audio.setVolume(msg.value);
-                    break;
-                case playerMessage::CONNECTTOHOST:                
-                    audio.stopSong();
-                    _paused = false;
-                    ws.textAll("status\nplaying\n");
-                    if (!audio.connecttohost(msg.url, LIBRARY_USER, LIBRARY_PWD, msg.value))
-                        startNextItem();
-                    _currentSize = audio.size();
-                    _savedPosition = audio.position();                
-                    break;
-                case playerMessage::STOPSONG:
-                    audio.stopSong();
-                    break;
-                default: log_e("error: unhandled audio action: %i", msg.action);
+            switch (msg.action)
+            {
+            case playerMessage::SET_VOLUME:
+                audio.setVolume(msg.value);
+                break;
+            case playerMessage::CONNECTTOHOST:
+                audio.stopSong();
+                _paused = false;
+                ws.textAll("status\nplaying\n");
+                if (!audio.connecttohost(msg.url, LIBRARY_USER, LIBRARY_PWD, msg.value))
+                    startNextItem();
+                _currentSize = audio.size();
+                _savedPosition = audio.position();
+                break;
+            case playerMessage::STOPSONG:
+                audio.stopSong();
+                break;
+            default:
+                log_e("error: unhandled audio action: %i", msg.action);
             }
         }
 
@@ -93,7 +104,8 @@ void playerTask(void* parameter) {
         static unsigned long savedTime = millis();
         dataWaiting = audio.position() >= (_savedPosition + VS1053_MAX_BYTES_PER_LOOP);
 
-        if (ws.count() && audio.size() && millis() - savedTime > UPDATE_INTERVAL_MS && audio.position() != _savedPosition) {
+        if (ws.count() && audio.size() && millis() - savedTime > UPDATE_INTERVAL_MS && audio.position() != _savedPosition)
+        {
             ws.printfAll("progress\n%i\n%i\n", audio.position(), audio.size());
             savedTime = millis();
             _savedPosition = audio.position();
@@ -106,11 +118,13 @@ void playerTask(void* parameter) {
 //                                   H E L P E R - R O U T I N E S                       *
 //****************************************************************************************
 
-inline __attribute__((always_inline)) void updateCurrentItemOnClients() {
+inline __attribute__((always_inline)) void updateCurrentItemOnClients()
+{
     ws.printfAll("%s\n%i\n", CURRENT_HEADER, playList.currentItem());
 }
 
-void startItem(uint8_t const index, size_t offset = 0) {
+void startItem(uint8_t const index, size_t offset = 0)
+{
     updateCurrentItemOnClients();
     audio_showstreamtitle("");
 
@@ -122,44 +136,51 @@ void startItem(uint8_t const index, size_t offset = 0) {
 
     playListItem item;
     playList.get(index, item);
-    switch (item.type) {
-        case HTTP_FILE:
-            {
-                {
-                    char name[item.url.length() - item.url.lastIndexOf('/')];
-                    auto pos = item.url.lastIndexOf('/') + 1;
-                    auto cnt = 0;
-                    while (pos < item.url.length())
-                        name[cnt++] = item.url.charAt(pos++);
-                    name[cnt] = 0;
-                    audio_showstation(name);
-                }
-                char path[item.url.lastIndexOf('/') + 1];
-                auto pos = 0;
-                auto cnt = 0;
-                while (pos < item.url.lastIndexOf('/'))
-                    path[cnt++] = item.url.charAt(pos++);
-                path[pos] = 0;
-                audio_showstreamtitle(path);
-            }
-            break;
-        case HTTP_PRESET:
-            audio_showstation(preset[item.index].name.c_str());
-            break;
-        default: audio_showstation(item.name.c_str());
+    switch (item.type)
+    {
+    case HTTP_FILE:
+    {
+        {
+            char name[item.url.length() - item.url.lastIndexOf('/')];
+            auto pos = item.url.lastIndexOf('/') + 1;
+            auto cnt = 0;
+            while (pos < item.url.length())
+                name[cnt++] = item.url.charAt(pos++);
+            name[cnt] = 0;
+            audio_showstation(name);
+        }
+        char path[item.url.lastIndexOf('/') + 1];
+        auto pos = 0;
+        auto cnt = 0;
+        while (pos < item.url.lastIndexOf('/'))
+            path[cnt++] = item.url.charAt(pos++);
+        path[pos] = 0;
+        audio_showstreamtitle(path);
+    }
+    break;
+    case HTTP_PRESET:
+        audio_showstation(preset[item.index].name.c_str());
+        break;
+    default:
+        audio_showstation(item.name.c_str());
     }
 }
 
-void startNextItem() {
-    if (playList.currentItem() < playList.size() - 1) {
+void startNextItem()
+{
+    if (playList.currentItem() < playList.size() - 1)
+    {
         playList.setCurrentItem(playList.currentItem() + 1);
         startItem(playList.currentItem());
-    } else {
+    }
+    else
+    {
         playlistHasEnded();
     }
 }
 
-void playlistHasEnded() {
+void playlistHasEnded()
+{
     audio_showstreamtitle("Search API provided by: <a href=\"https://www.radio-browser.info/\" target=\"_blank\"><span style=\"white-space:nowrap;\">radio-browser.info</span></a>");
     playList.setCurrentItem(PLAYLIST_STOPPED);
     updateCurrentItemOnClients();
@@ -168,7 +189,8 @@ void playlistHasEnded() {
     audio_showstation(versionString);
 }
 
-void upDatePlaylistOnClients() {
+void upDatePlaylistOnClients()
+{
     {
         String s;
         ws.textAll(playList.toString(s));
@@ -176,52 +198,59 @@ void upDatePlaylistOnClients() {
     updateCurrentItemOnClients();
 }
 
-bool saveItemToFavorites(AsyncWebSocketClient* client, const char* filename, const playListItem& item) {
-    if (!strlen(filename)) {
+bool saveItemToFavorites(AsyncWebSocketClient *client, const char *filename, const playListItem &item)
+{
+    if (!strlen(filename))
+    {
         log_e("ERROR! no filename");
         return false;
     }
-    switch (item.type) {
-        case HTTP_FILE:
-            log_d("file (wont save)%s", item.url.c_str());
+    switch (item.type)
+    {
+    case HTTP_FILE:
+        log_d("file (wont save)%s", item.url.c_str());
+        return false;
+    case HTTP_PRESET:
+        log_d("preset (wont save) %s %s", preset[item.index].name.c_str(), preset[item.index].url.c_str());
+        return false;
+    case HTTP_FOUND:
+    case HTTP_FAVORITE:
+    {
+        char path[strlen(FAVORITES_FOLDER) + strlen(filename) + 1];
+        snprintf(path, sizeof(path), "%s%s", FAVORITES_FOLDER, filename);
+        File file = FFat.open(path, FILE_WRITE);
+        if (!file)
+        {
+            log_e("failed to open '%s' for writing", filename);
+            client->printf("%s\nERROR: Could not open '%s' for writing!", MESSAGE_HEADER, filename);
             return false;
-        case HTTP_PRESET:
-            log_d("preset (wont save) %s %s", preset[item.index].name.c_str(), preset[item.index].url.c_str());
+        }
+        char url[item.url.length() + 2];
+        snprintf(url, sizeof(url), "%s\n", item.url.c_str());
+        const auto bytesWritten = file.print(url);
+        file.close();
+        if (bytesWritten < strlen(url))
+        {
+            log_e("ERROR! Saving '%s' failed - disk full?", filename);
+            client->printf("%s\nERROR: Could not completely save '%s' to favorites!", MESSAGE_HEADER, filename);
             return false;
-        case HTTP_FOUND:
-        case HTTP_FAVORITE:
-            {
-                char path[strlen(FAVORITES_FOLDER) + strlen(filename) + 1];
-                snprintf(path, sizeof(path), "%s%s", FAVORITES_FOLDER, filename);
-                File file = FFat.open(path, FILE_WRITE);
-                if (!file) {
-                    log_e("failed to open '%s' for writing", filename);
-                    client->printf("%s\nERROR: Could not open '%s' for writing!", MESSAGE_HEADER, filename);
-                    return false;
-                }
-                char url[item.url.length() + 2];
-                snprintf(url, sizeof(url), "%s\n", item.url.c_str());
-                const auto bytesWritten = file.print(url);
-                file.close();
-                if (bytesWritten < strlen(url)) {
-                    log_e("ERROR! Saving '%s' failed - disk full?", filename);
-                    client->printf("%s\nERROR: Could not completely save '%s' to favorites!", MESSAGE_HEADER, filename);
-                    return false;
-                }
-                client->printf("%s\nSaved '%s' to favorites!", MESSAGE_HEADER, filename);
-                return true;
-            }
-            break;
-        default:
-            {
-                log_w("Unhandled item.type.");
-                return false;
-            }
+        }
+        client->printf("%s\nSaved '%s' to favorites!", MESSAGE_HEADER, filename);
+        return true;
+    }
+    break;
+    default:
+    {
+        log_w("Unhandled item.type.");
+        return false;
+    }
     }
 }
 
-void handleFavoriteToPlaylist(AsyncWebSocketClient* client, const char* filename, const bool startNow) {
-    if (PLAYLIST_MAX_ITEMS == playList.size()) {
+void handleFavoriteToPlaylist(AsyncWebSocketClient *client, const char *filename, const bool startNow)
+{
+    if (PLAYLIST_MAX_ITEMS == playList.size())
+    {
         log_e("ERROR! Could not add %s to playlist", filename);
         client->printf("%s\nERROR: Could not add '%s' to playlist", MESSAGE_HEADER, filename);
         return;
@@ -229,7 +258,8 @@ void handleFavoriteToPlaylist(AsyncWebSocketClient* client, const char* filename
     char path[strlen(FAVORITES_FOLDER) + strlen(filename) + 1];
     snprintf(path, sizeof(path), "%s%s", FAVORITES_FOLDER, filename);
     File file = FFat.open(path);
-    if (!file) {
+    if (!file)
+    {
         log_e("ERROR! Could not open %s", filename);
         client->printf("%s\nERROR: Could not add '%s' to playlist", MESSAGE_HEADER, filename);
         return;
@@ -237,34 +267,40 @@ void handleFavoriteToPlaylist(AsyncWebSocketClient* client, const char* filename
     char url[file.size() + 1];
     auto cnt = 0;
     char ch = (char)file.read();
-    while (ch != '\n' && file.available()) {
+    while (ch != '\n' && file.available())
+    {
         url[cnt++] = ch;
         ch = (char)file.read();
     }
     url[cnt] = 0;
     file.close();
     const auto previousSize = playList.size();
-    playList.add({ HTTP_FAVORITE, filename, url, 0 });
+    playList.add({HTTP_FAVORITE, filename, url, 0});
 
     log_d("favorite to playlist: %s -> %s", filename, url);
     client->printf("%s\nAdded '%s' to playlist", MESSAGE_HEADER, filename);
 
-    if (startNow || playList.currentItem() == PLAYLIST_STOPPED) {
+    if (startNow || playList.currentItem() == PLAYLIST_STOPPED)
+    {
         playList.setCurrentItem(previousSize);
         startItem(playList.currentItem());
     }
 }
 
-const String& favoritesToString(String& s) {
+const String &favoritesToString(String &s)
+{
     s = "favorites\n";
     File folder = FFat.open(FAVORITES_FOLDER);
-    if (!folder) {
+    if (!folder)
+    {
         log_e("ERROR! Could not open favorites folder");
         return s;
     }
     File file = folder.openNextFile();
-    while (file) {
-        if (!file.isDirectory() && file.size() < PLAYLIST_MAX_URL_LENGTH) {
+    while (file)
+    {
+        if (!file.isDirectory() && file.size() < PLAYLIST_MAX_URL_LENGTH)
+        {
             s.concat(file.name());
             s.concat("\n");
         }
@@ -273,21 +309,26 @@ const String& favoritesToString(String& s) {
     return s;
 }
 
-const String& favoritesToCStruct(String& s) {
+const String &favoritesToCStruct(String &s)
+{
     File folder = FFat.open(FAVORITES_FOLDER);
-    if (!folder) {
+    if (!folder)
+    {
         s = "ERROR! Could not open folder " + String(FAVORITES_FOLDER);
         return s;
     }
     s = "const source preset[] = {\n";
     File file = folder.openNextFile();
-    while (file) {
-        if (!file.isDirectory() && file.size() < PLAYLIST_MAX_URL_LENGTH) {
+    while (file)
+    {
+        if (!file.isDirectory() && file.size() < PLAYLIST_MAX_URL_LENGTH)
+        {
             s.concat("    {\"");
             s.concat(file.name());
             s.concat("\", \"");
             char ch = (char)file.read();
-            while (file.available() && ch != '\n') {
+            while (file.available() && ch != '\n')
+            {
                 s.concat(ch);
                 ch = (char)file.read();
             }
@@ -303,16 +344,19 @@ const String& favoritesToCStruct(String& s) {
 //                                   S E T U P                                           *
 //****************************************************************************************
 
-const char* HEADER_MODIFIED_SINCE = "If-Modified-Since";
+const char *HEADER_MODIFIED_SINCE = "If-Modified-Since";
 
-static inline __attribute__((always_inline)) bool htmlUnmodified(const AsyncWebServerRequest* request, const char* date) {
+static inline __attribute__((always_inline)) bool htmlUnmodified(const AsyncWebServerRequest *request, const char *date)
+{
     return request->hasHeader(HEADER_MODIFIED_SINCE) && request->header(HEADER_MODIFIED_SINCE).equals(date);
 }
 
 // cppcheck-suppress unusedFunction
-void setup() {
+void setup()
+{
 #if ARDUHAL_LOG_LEVEL >= ARDUHAL_LOG_LEVEL_NONE
-    if (ENABLE_DEBUG_ESP32_S2) {
+    if (ENABLE_DEBUG_ESP32_S2)
+    {
         delay(2000);
         Serial.setDebugOutput(true);
     }
@@ -327,21 +371,26 @@ void setup() {
     log_i("Found %i presets", NUMBER_OF_PRESETS);
 
     /* check if a ffat partition is defined and halt the system if it is not defined*/
-    if (!esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_FAT, "ffat")) {
+    if (!esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_FAT, "ffat"))
+    {
         log_e("FATAL ERROR! No FFat partition defined. System is halted.\nCheck 'Tools>Partition Scheme' in the Arduino IDE and select a partition table with a FFat partition.");
-        while (true) delay(1000); /* system is halted */
+        while (true)
+            delay(1000); /* system is halted */
     }
 
     /* partition is defined - try to mount it */
-    if (FFat.begin(0, "", 2))  // see: https://github.com/lorol/arduino-esp32fs-plugin#notes-for-fatfs
+    if (FFat.begin(0, "", 2)) // see: https://github.com/lorol/arduino-esp32fs-plugin#notes-for-fatfs
         log_i("FFat mounted");
 
     /* partition is present, but does not mount so now we just format it */
-    else {
+    else
+    {
         log_i("Formatting FFat...");
-        if (!FFat.format(true, (char*)"ffat") || !FFat.begin(0, "", 2)) {
+        if (!FFat.format(true, (char *)"ffat") || !FFat.begin(0, "", 2))
+        {
             log_e("FFat error while formatting. Halting.");
-            while (true) delay(1000); /* system is halted */
+            while (true)
+                delay(1000); /* system is halted */
         }
     }
 
@@ -355,8 +404,9 @@ void setup() {
 
     if (psramFound())
         WiFi.useStaticBuffers(true);
-        
-    if (SET_STATIC_IP && !WiFi.config(localip, gateway, subnet, primarydns)) {
+
+    if (SET_STATIC_IP && !WiFi.config(localip, gateway, subnet, primarydns))
+    {
         log_e("Setting static IP failed");
     }
 
@@ -367,23 +417,29 @@ void setup() {
 
     playerQueue = xQueueCreate(5, sizeof(struct playerMessage));
 
-    if (!playerQueue) {
+    if (!playerQueue)
+    {
         log_e("Could not create queue. System halted.");
-        while (true) delay(100);
+        while (true)
+            delay(100);
     }
 
     WiFi.waitForConnectResult();
 
-    if (!WiFi.isConnected()) {
+    if (!WiFi.isConnected())
+    {
         log_e("Could not connect to Wifi! System halted! Check 'system_setup.h'!");
-        while (true) delay(1000); /* system is halted */
+        while (true)
+            delay(1000); /* system is halted */
     }
 
     log_i("WiFi connected - IP %s", WiFi.localIP().toString().c_str());
 
     configTzTime(TIMEZONE, NTP_POOL);
 
-    struct tm timeinfo {};
+    struct tm timeinfo
+    {
+    };
 
     log_i("Waiting for NTP sync...");
 
@@ -401,20 +457,21 @@ void setup() {
     static char modifiedDate[30];
     strftime(modifiedDate, sizeof(modifiedDate), "%a, %d %b %Y %X GMT", gmtime(&bootTime));
 
-    static const char* HTML_MIMETYPE{ "text/html" };
-    static const char* HEADER_LASTMODIFIED{ "Last-Modified" };
-    static const char* HEADER_CONTENT_ENCODING{ "Content-Encoding" };
-    static const char* GZIP_CONTENT_ENCODING{ "gzip" };
+    static const char *HTML_MIMETYPE{"text/html"};
+    static const char *HEADER_LASTMODIFIED{"Last-Modified"};
+    static const char *HEADER_CONTENT_ENCODING{"Content-Encoding"};
+    static const char *GZIP_CONTENT_ENCODING{"gzip"};
 
-    server.on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
+    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
         if (htmlUnmodified(request, modifiedDate)) return request->send(304);
         AsyncWebServerResponse* const response = request->beginResponse_P(200, HTML_MIMETYPE, index_htm_gz, index_htm_gz_len);
         response->addHeader(HEADER_LASTMODIFIED, modifiedDate);
         response->addHeader(HEADER_CONTENT_ENCODING, GZIP_CONTENT_ENCODING);
-        request->send(response);
-    });
+        request->send(response); });
 
-    server.on("/scripturl", HTTP_GET, [](AsyncWebServerRequest* request) {
+    server.on("/scripturl", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
         if (htmlUnmodified(request, modifiedDate)) return request->send(304);
         AsyncResponseStream* const response = request->beginResponseStream(HTML_MIMETYPE);
         response->addHeader(HEADER_LASTMODIFIED, modifiedDate);
@@ -423,117 +480,116 @@ void setup() {
             response->println(LIBRARY_USER);
             response->println(LIBRARY_PWD);
         }
-        request->send(response);
-    });
+        request->send(response); });
 
-    server.on("/stations", HTTP_GET, [](AsyncWebServerRequest* request) {
+    server.on("/stations", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
         if (htmlUnmodified(request, modifiedDate)) return request->send(304);
         AsyncResponseStream* const response = request->beginResponseStream(HTML_MIMETYPE);
         response->addHeader(HEADER_LASTMODIFIED, modifiedDate);
         auto i = 0;
         while (i < NUMBER_OF_PRESETS)
             response->printf("%s\n", preset[i++].name.c_str());
-        request->send(response);
-    });
+        request->send(response); });
 
-    server.on("/favorites", HTTP_GET, [](AsyncWebServerRequest* request) {
+    server.on("/favorites", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
         AsyncResponseStream* const response = request->beginResponseStream("text/plain");
         response->addHeader("Cache-Control", "no-cache,no-store,must-revalidate,max-age=0");
         String s;
         response->print(favoritesToCStruct(s));
-        request->send(response);
-    });
+        request->send(response); });
 
-    static const char* SVG_MIMETYPE{ "image/svg+xml" };
+    static const char *SVG_MIMETYPE{"image/svg+xml"};
 
-    server.on("/radioicon.svg", HTTP_GET, [](AsyncWebServerRequest* request) {
+    server.on("/radioicon.svg", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
         if (htmlUnmodified(request, modifiedDate)) return request->send(304);
         AsyncWebServerResponse* const response = request->beginResponse_P(200, SVG_MIMETYPE, radioicon);
         response->addHeader(HEADER_LASTMODIFIED, modifiedDate);
-        request->send(response);
-    });
+        request->send(response); });
 
-    server.on("/playicon.svg", HTTP_GET, [](AsyncWebServerRequest* request) {
+    server.on("/playicon.svg", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
         if (htmlUnmodified(request, modifiedDate)) return request->send(304);
         AsyncWebServerResponse* const response = request->beginResponse_P(200, SVG_MIMETYPE, playicon);
         response->addHeader(HEADER_LASTMODIFIED, modifiedDate);
-        request->send(response);
-    });
+        request->send(response); });
 
-    server.on("/libraryicon.svg", HTTP_GET, [](AsyncWebServerRequest* request) {
+    server.on("/libraryicon.svg", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
         if (htmlUnmodified(request, modifiedDate)) return request->send(304);
         AsyncWebServerResponse* const response = request->beginResponse_P(200, SVG_MIMETYPE, libraryicon);
         response->addHeader(HEADER_LASTMODIFIED, modifiedDate);
-        request->send(response);
-    });
+        request->send(response); });
 
-    server.on("/favoriteicon.svg", HTTP_GET, [](AsyncWebServerRequest* request) {
+    server.on("/favoriteicon.svg", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
         if (htmlUnmodified(request, modifiedDate)) return request->send(304);
         AsyncWebServerResponse* const response = request->beginResponse_P(200, SVG_MIMETYPE, favoriteicon);
         response->addHeader(HEADER_LASTMODIFIED, modifiedDate);
-        request->send(response);
-    });
+        request->send(response); });
 
-    server.on("/streamicon.svg", HTTP_GET, [](AsyncWebServerRequest* request) {
+    server.on("/streamicon.svg", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
         if (htmlUnmodified(request, modifiedDate)) return request->send(304);
         AsyncWebServerResponse* const response = request->beginResponse_P(200, SVG_MIMETYPE, pasteicon);
         response->addHeader(HEADER_LASTMODIFIED, modifiedDate);
-        request->send(response);
-    });
+        request->send(response); });
 
-    server.on("/deleteicon.svg", HTTP_GET, [](AsyncWebServerRequest* request) {
+    server.on("/deleteicon.svg", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
         if (htmlUnmodified(request, modifiedDate)) return request->send(304);
         AsyncWebServerResponse* const response = request->beginResponse_P(200, SVG_MIMETYPE, deleteicon);
         response->addHeader(HEADER_LASTMODIFIED, modifiedDate);
-        request->send(response);
-    });
+        request->send(response); });
 
-    server.on("/addfoldericon.svg", HTTP_GET, [](AsyncWebServerRequest* request) {
+    server.on("/addfoldericon.svg", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
         if (htmlUnmodified(request, modifiedDate)) return request->send(304);
         AsyncWebServerResponse* const response = request->beginResponse_P(200, SVG_MIMETYPE, addfoldericon);
         response->addHeader(HEADER_LASTMODIFIED, modifiedDate);
-        request->send(response);
-    });
+        request->send(response); });
 
-    server.on("/emptyicon.svg", HTTP_GET, [](AsyncWebServerRequest* request) {
+    server.on("/emptyicon.svg", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
         if (htmlUnmodified(request, modifiedDate)) return request->send(304);
         AsyncWebServerResponse* const response = request->beginResponse_P(200, SVG_MIMETYPE, emptyicon);
         response->addHeader(HEADER_LASTMODIFIED, modifiedDate);
-        request->send(response);
-    });
+        request->send(response); });
 
-    server.on("/starticon.svg", HTTP_GET, [](AsyncWebServerRequest* request) {
+    server.on("/starticon.svg", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
         if (htmlUnmodified(request, modifiedDate)) return request->send(304);
         AsyncWebServerResponse* const response = request->beginResponse_P(200, SVG_MIMETYPE, starticon);
         response->addHeader(HEADER_LASTMODIFIED, modifiedDate);
-        request->send(response);
-    });
+        request->send(response); });
 
-    server.on("/pauseicon.svg", HTTP_GET, [](AsyncWebServerRequest* request) {
+    server.on("/pauseicon.svg", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
         if (htmlUnmodified(request, modifiedDate)) return request->send(304);
         AsyncWebServerResponse* const response = request->beginResponse_P(200, SVG_MIMETYPE, pauseicon);
         response->addHeader(HEADER_LASTMODIFIED, modifiedDate);
-        request->send(response);
-    });
+        request->send(response); });
 
-    server.on("/searchicon.svg", HTTP_GET, [](AsyncWebServerRequest* request) {
+    server.on("/searchicon.svg", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
         if (htmlUnmodified(request, modifiedDate)) return request->send(304);
         AsyncWebServerResponse* const response = request->beginResponse_P(200, SVG_MIMETYPE, searchicon);
         response->addHeader(HEADER_LASTMODIFIED, modifiedDate);
-        request->send(response);
-    });
+        request->send(response); });
 
-    server.on("/nosslicon.svg", HTTP_GET, [](AsyncWebServerRequest* request) {
+    server.on("/nosslicon.svg", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
         if (htmlUnmodified(request, modifiedDate)) return request->send(304);
         AsyncWebServerResponse* const response = request->beginResponse_P(200, SVG_MIMETYPE, nosslicon);
         response->addHeader(HEADER_LASTMODIFIED, modifiedDate);
-        request->send(response);
-    });
+        request->send(response); });
 
-    server.onNotFound([](AsyncWebServerRequest* request) {
+    server.onNotFound([](AsyncWebServerRequest *request)
+                      {
         log_e("404 - Not found: 'http://%s%s'", request->host().c_str(), request->url().c_str());
-        request->send(404);
-    });
+        request->send(404); });
 
     DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
 
@@ -554,9 +610,11 @@ void setup() {
         1                      /* Core where the task should run */
     );
 
-    if (result != pdPASS) {
+    if (result != pdPASS)
+    {
         log_e("ERROR! Could not create playerTask. System halted.");
-        while (true) delay(100);
+        while (true)
+            delay(100);
     }
 
     playerMessage msg;
@@ -564,7 +622,7 @@ void setup() {
     msg.value = VS1053_INITIALVOLUME;
     xQueueSend(playerQueue, &msg, portMAX_DELAY);
 
-    vTaskDelete(NULL);  // this deletes both setup() and loop() - see ~/.arduino15/packages/esp32/hardware/esp32/1.0.6/cores/esp32/main.cpp
+    vTaskDelete(NULL); // this deletes both setup() and loop() - see ~/.arduino15/packages/esp32/hardware/esp32/1.0.6/cores/esp32/main.cpp
 }
 
 //****************************************************************************************
@@ -572,7 +630,8 @@ void setup() {
 //****************************************************************************************
 
 // cppcheck-suppress unusedFunction
-void loop() {
+void loop()
+{
 }
 
 //*****************************************************************************************
@@ -581,7 +640,8 @@ void loop() {
 
 #define MAX_STATION_NAME_LENGTH 200
 static char showstation[MAX_STATION_NAME_LENGTH];
-void audio_showstation(const char* info) {
+void audio_showstation(const char *info)
+{
     playListItem item;
     playList.get(playList.currentItem(), item);
     snprintf(showstation, sizeof(showstation), "showstation\n%s\n%s", info, typeStr[item.type]);
@@ -591,13 +651,15 @@ void audio_showstation(const char* info) {
 
 #define MAX_METADATA_LENGTH 255
 static char streamtitle[MAX_METADATA_LENGTH];
-void audio_showstreamtitle(const char* info) {
+void audio_showstreamtitle(const char *info)
+{
     snprintf(streamtitle, sizeof(streamtitle), "streamtitle\n%s", percentEncode(info).c_str());
     log_d("%s", streamtitle);
     ws.textAll(streamtitle);
 }
 
-void audio_eof_stream(const char* info) {
+void audio_eof_stream(const char *info)
+{
     log_d("%s", info);
     startNextItem();
 }

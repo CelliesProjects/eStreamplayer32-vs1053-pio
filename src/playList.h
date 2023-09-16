@@ -9,71 +9,89 @@
 #define PLAYLIST_MAX_URL_LENGTH 255
 #define PLAYLIST_STOPPED -1 /* do not change */
 
-enum streamType { HTTP_FILE,
-                  HTTP_FOUND,
-                  HTTP_FAVORITE,
-                  HTTP_PRESET };
-static const char* typeStr[] = { "FILE", "FOUND", "FAVO", "PRESET" };
+enum streamType
+{
+    HTTP_FILE,
+    HTTP_FOUND,
+    HTTP_FAVORITE,
+    HTTP_PRESET
+};
+static const char *typeStr[] = {"FILE", "FOUND", "FAVO", "PRESET"};
 
-struct playListItem {
+struct playListItem
+{
     streamType type;
     String name;
     String url;
     uint32_t index;
 };
 
-class playList_t {
+class playList_t
+{
 
-  public:
+public:
     playList_t(){};
-    ~playList_t() {
+    ~playList_t()
+    {
         list.clear();
     }
-    int size() {
+    int size()
+    {
         return list.size();
     }
 
-    void get(const uint32_t index, playListItem& item) {
+    void get(const uint32_t index, playListItem &item)
+    {
         item = (index < list.size()) ? list[index] : (playListItem){};
     }
 
-    String url(const uint32_t index) {
+    String url(const uint32_t index)
+    {
         return (index < list.size()) ? ((list[index].type == HTTP_PRESET) ? preset[list[index].index].url : list[index].url) : "";
     }
 
-    String name(const uint32_t index) {
+    String name(const uint32_t index)
+    {
         return (index < list.size()) ? ((list[index].type == HTTP_PRESET) ? preset[list[index].index].name : list[index].name) : "";
     }
 
-    void add(const playListItem& item) {
-        if (list.size() < PLAYLIST_MAX_ITEMS) {
+    void add(const playListItem &item)
+    {
+        if (list.size() < PLAYLIST_MAX_ITEMS)
+        {
             list.push_back(item);
         }
     }
-    void remove(const uint32_t index) {
-        if (list.size() > index) {
+    void remove(const uint32_t index)
+    {
+        if (list.size() > index)
+        {
             list.erase(list.begin() + index);
         }
     }
-    void clear() {
-        if (list.size()) {
+    void clear()
+    {
+        if (list.size())
+        {
             list.clear();
             _currentItem = PLAYLIST_STOPPED;
         }
     }
-    String& toString(String& s);
+    String &toString(String &s);
 
-    int8_t currentItem() {
+    int8_t currentItem()
+    {
         return _currentItem;
     }
 
-    void setCurrentItem(int8_t index) {
+    void setCurrentItem(int8_t index)
+    {
         _currentItem = index;
     }
 
-  private:
+private:
     std::vector<playListItem> list;
-    int8_t _currentItem{ PLAYLIST_STOPPED };
+    int8_t _currentItem{PLAYLIST_STOPPED};
 };
 
 #endif
