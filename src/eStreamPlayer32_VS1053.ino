@@ -354,13 +354,11 @@ static inline __attribute__((always_inline)) bool htmlUnmodified(const AsyncWebS
 // cppcheck-suppress unusedFunction
 void setup()
 {
-#if ARDUHAL_LOG_LEVEL >= ARDUHAL_LOG_LEVEL_NONE
-    if (ENABLE_DEBUG_ESP32_S2)
-    {
-        delay(2000);
-        Serial.setDebugOutput(true);
-    }
+#ifdef CONFIG_IDF_TARGET_ESP32S2
+    delay(3000);
+    Serial.setDebugOutput(true);
 #endif
+
     log_i("\n\n\t\t\t\teStreamplayer version: %s\n", GIT_VERSION);
 
     [[maybe_unused]] const uint32_t idf = ESP_IDF_VERSION_PATCH + ESP_IDF_VERSION_MINOR * 10 + ESP_IDF_VERSION_MAJOR * 100;
