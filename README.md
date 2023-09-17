@@ -11,6 +11,9 @@ You control the music player with a browser on your phone, pc or tablet.
 -  Plays mp3, ogg, aac and aac+ streams.
 -  Runs  on:<br>esp32<br>esp32-wrover<br>esp32-s2<br>esp32-s3
 
+The interface is kept very simple, a playlist tab on the right and selectable source tabs on the left.<br>After 30 seconds of inactivity the file info overlay is shown, click on the overlay to hide it or use the info button on the bottom to toggle the overlay.<br>On this overlay you can also save the current playing search result to the favorites tab with this <img src="https://github.com/CelliesProjects/eStreamplayer32-vs1053-pio/assets/24290108/6e0d2706-45cd-4e5d-86ba-c194101afba7"> icon.
+
+
 ### Local file playback
 
 eStreamPlayer is written for playback over http(s). What this means is that you will need a (lamp or llmp) webserver to play back your local files.<br>This is because the esp32 does not speak NFS or SMB which are common ways to share files over a network. Instead eStreamPlayer uses a php script on the server to navigate the music folders. Copy this script to the server to use your music library.<br>**This is totally insecure and should only be used on a trusted LAN!**
