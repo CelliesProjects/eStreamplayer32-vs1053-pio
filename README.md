@@ -2,17 +2,16 @@
 
 A web-based esp32 music player for webradio and mp3/ogg/aac/aac+ files from a local lamp or llmp server.
 <br>Sound output comes from a separate VS1053 mp3/aac/ogg/wav decoder breakout board.
-<br>The web interface has [radio-browser](https://www.radio-browser.info/) web radio search integrated.
+
+You control the music player with a browser on your phone, pc or tablet.
 
 -  Supports http, https (insecure mode)/chunked streams.
+-  Search for web radio stations on [radio-browser](https://www.radio-browser.info/) and save the results to your favorites.
+-  No need for a display as the interface is completely network based.
 -  Plays mp3, ogg, aac and aac+ streams.
 -  Runs  on:<br>esp32<br>esp32-wrover<br>esp32-s2<br>esp32-s3
--  No need for a display as the interface is completely network based.
 
- You control the music player with a browser on your phone, pc or tablet.
-
-
-### Local file playback limitations 
+### Local file playback
 
 eStreamPlayer is written for playback over http(s). What this means is that you will need a (lamp or llmp) webserver to play back your local files.<br>This is because the esp32 does not speak NFS or SMB which are common ways to share files over a network. Instead eStreamPlayer uses a php script on the server to navigate the music folders. Copy this script to the server to use your music library.<br>**This is totally insecure and should only be used on a trusted LAN!**
 
@@ -22,19 +21,22 @@ But if you don't have a local music server you can still use eStreamPlayer to tu
 
 #### File info overlay
 
-<img src="https://user-images.githubusercontent.com/24290108/144031653-fae792d3-9465-43a3-be7a-48b92bd972c8.png" width="50%" alt="file overlay">
+<img src="https://github.com/CelliesProjects/eStreamplayer32-vs1053-pio/assets/24290108/3d07fd0e-2cea-4ee7-acda-b85ffc17b79d" width="50%" alt="file overlay">
 
 #### LIBRARY tab
 
-<img src="https://user-images.githubusercontent.com/24290108/144031862-9764fe6c-6f84-4a2f-b6ad-5aeee999f056.png" width="50%" alt="file overlay">
+<img src="https://github.com/CelliesProjects/eStreamplayer32-vs1053-pio/assets/24290108/9c1e57f1-41d5-445f-82dc-bde5ec84a0ff" width="50%" alt="file overlay">
 
 #### WEBRADIO tab
 
-<img src="https://user-images.githubusercontent.com/24290108/144031827-298cceee-6e40-4bb0-b107-6b7cefe11623.png" width="50%" alt="file overlay">
+<img src="https://github.com/CelliesProjects/eStreamplayer32-vs1053-pio/assets/24290108/d29e9863-afc2-43c0-a086-3a07e2b75729" width="50%" alt="file overlay">
 
 #### FAVORITES tab
 
-<img src="https://user-images.githubusercontent.com/24290108/144031557-07e7238e-2e8f-4876-b297-31c82878e1af.png" width="50%" alt="file overlay">
+<img src="https://github.com/CelliesProjects/eStreamplayer32-vs1053-pio/assets/24290108/8993d7d0-d09b-469a-9a87-b0a22df34c9c" width="50%" alt="file overlay">
+
+#### SEARCH tab showing results for 'techno' search
+<img src="https://github.com/CelliesProjects/eStreamplayer32-vs1053-pio/assets/24290108/e68113c2-f02d-4fad-ad05-0724fae3ee1e" width="50%" alt="file overlay">
 
 ### First boot and setup
 
