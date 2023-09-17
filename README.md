@@ -1,21 +1,14 @@
 # eStreamPlayer32 VS1053 in PlatformIO
 
-A web-based esp32 music player for webradio and mp3/ogg/aac/aac+ files from a lamp or llmp server.
+A web-based esp32 music player for webradio and mp3/ogg/aac/aac+ files from a local lamp or llmp server.
 <br>Sound output comes from a separate VS1053 mp3/aac/ogg/wav decoder breakout board.
-<br>The web interface has [radio-browser](https://www.radio-browser.info/) station search integrated.
+<br>The web interface has [radio-browser](https://www.radio-browser.info/) web radio search integrated.
 
-Supports http, https (insecure mode)/chunked streams.
+-  Supports http, https (insecure mode)/chunked streams.
+-  Plays mp3, ogg, aac and aac+ streams.
+-  Runs  on:<br>esp32<br>esp32-wrover<br>esp32-s2<br>esp32-s3
+-  No need for a display as the interface is completely network based.
 
-Plays mp3, ogg, aac and aac+ streams.
-
-Compatible with esp32, esp32-s2 and probably esp32-s3. (my s3 mini died on me)
-
-### What can you do with this app?
-
--  Play your local files.
--  Play preset radio stations.
--  Search for new radio stations on [radio-browser.info](https://www.radio-browser.info/) and save found stations to favorites.
- 
  You control the music player with a browser on your phone, pc or tablet.
 
 
