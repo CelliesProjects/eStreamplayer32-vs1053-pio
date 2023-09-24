@@ -69,12 +69,10 @@ void playerTask(void *parameter)
 
     log_i("Ready to rock!");
 
-    static bool dataWaiting = false;
-
     while (true)
     {
         playerMessage msg;
-        if (xQueueReceive(playerQueue, &msg, pdMS_TO_TICKS(dataWaiting ? 0 : 25)) == pdPASS)
+        if (xQueueReceive(playerQueue, &msg, pdMS_TO_TICKS(5)) == pdPASS)
         {
             log_d("Minimum free stack bytes: %i", uxTaskGetStackHighWaterMark(NULL));
             switch (msg.action)
@@ -99,13 +97,14 @@ void playerTask(void *parameter)
             }
         }
 
-        constexpr const auto MAX_UPDATE_FREQ_HZ = 4;
+        constexpr const auto MAX_UPDATE_FREQ_HZ = 3;
         constexpr const auto UPDATE_INTERVAL_MS = 1000 / MAX_UPDATE_FREQ_HZ;
         static unsigned long savedTime = millis();
-        dataWaiting = audio.position() >= (_savedPosition + VS1053_MAX_BYTES_PER_LOOP);
 
         if (ws.count() && audio.size() && millis() - savedTime > UPDATE_INTERVAL_MS && audio.position() != _savedPosition)
         {
+            log_d("Buffer status: %s", audio.bufferStatus());
+
             ws.printfAll("progress\n%i\n%i\n", audio.position(), audio.size());
             savedTime = millis();
             _savedPosition = audio.position();
@@ -354,7 +353,7 @@ static inline __attribute__((always_inline)) bool htmlUnmodified(const AsyncWebS
 // cppcheck-suppress unusedFunction
 void setup()
 {
-#ifdef CONFIG_IDF_TARGET_ESP32S2
+#if defined(CONFIG_IDF_TARGET_ESP32S2) && ARDUHAL_LOG_LEVEL != ARDUHAL_LOG_LEVEL_NONE
     delay(3000);
     Serial.setDebugOutput(true);
 #endif
@@ -400,8 +399,7 @@ void setup()
     subnet.fromString(SUBNET);
     primarydns.fromString(PRIMARY_DNS);
 
-    if (psramFound())
-        WiFi.useStaticBuffers(true);
+    WiFi.useStaticBuffers(true);
 
     if (SET_STATIC_IP && !WiFi.config(localip, gateway, subnet, primarydns))
     {
