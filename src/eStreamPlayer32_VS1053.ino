@@ -53,6 +53,16 @@ void playerTask(void *parameter)
     SPI.setHwCs(true);
     SPI.begin(SPI_CLK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN);
 
+#if defined(VS1053_RST_PIN)
+
+    /* the RESET or ENABLE pin is not exposed on the ESP32-S3 BOX */
+    /* so we use a gpio pin to connect to XRST on the VS1053 */
+    /* and set this pin to high to enable the codec chip */
+
+    pinMode(VS1053_RST_PIN, OUTPUT);
+    digitalWrite(VS1053_RST_PIN, HIGH);
+#endif
+
     static ESP32_VS1053_Stream audio;
 
     if (!audio.startDecoder(VS1053_CS_PIN, VS1053_DCS_PIN, VS1053_DREQ_PIN) || !audio.isChipConnected())
