@@ -82,6 +82,10 @@ Apache2 and lighttpd were tested and should work.
 
 The Google Roboto font and jQuery are fetched from the net. Your downloads will be tracked by the respective providers for this 'free' data. 
 
+### Resources
+
+-  https://www.stream-meta.info/
+
 ### License
 
 MIT License
