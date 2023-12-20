@@ -5,6 +5,11 @@
 #include <ESPAsyncWebServer.h> /* use the esphome.io fork*/
 #include <ESP32_VS1053_Stream.h>
 
+#if defined(M5STACK_M5GFX)
+#include <M5GFX.h>
+M5GFX display;
+#endif
+
 #include "secrets.h" /* Untracked file containing the WiFi credentials*/
 
 #include "playList.h"
@@ -50,9 +55,6 @@ void playerTask(void *parameter)
 {
     log_i("Starting VS1053 codec...");
 
-    SPI.setHwCs(true);
-    SPI.begin(SPI_CLK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN);
-
 #if defined(VS1053_RST_PIN)
 
     /* the RESET or ENABLE pin is not exposed on the ESP32-S3 BOX */
@@ -62,6 +64,10 @@ void playerTask(void *parameter)
     pinMode(VS1053_RST_PIN, OUTPUT);
     digitalWrite(VS1053_RST_PIN, HIGH);
 #endif
+
+#if defined(M5STACK_M5GFX)
+    display.println("Start VS1053");
+#endif    
 
     static ESP32_VS1053_Stream audio;
 
@@ -76,6 +82,10 @@ void playerTask(void *parameter)
     log_d("Free: %d", ESP.getFreeHeap());
     log_d("PSRAM: %d", ESP.getPsramSize());
     log_d("Free: %d", ESP.getFreePsram());
+
+#if defined(M5STACK_M5GFX)
+    display.clear();
+#endif    
 
     log_i("Ready to rock!");
 
@@ -106,6 +116,16 @@ void playerTask(void *parameter)
                 log_e("error: unhandled audio action: %i", msg.action);
             }
         }
+
+#if defined(M5STACK_M5GFX)
+        char buffer[200] = {0};
+        snprintf(buffer, sizeof(buffer), "stream percent: %3.0f%%  ", audio.size() ? 100 * ((float)(audio.position()) / audio.size()) : 0);
+        display.setCursor(0, 0);
+        display.print(buffer);
+        display.setCursor(0, 20);
+        display.print(audio.bufferStatus());
+        display.print("         ");
+#endif
 
         constexpr const auto MAX_UPDATE_FREQ_HZ = 3;
         constexpr const auto UPDATE_INTERVAL_MS = 1000 / MAX_UPDATE_FREQ_HZ;
@@ -368,6 +388,10 @@ void setup()
     Serial.setDebugOutput(true);
 #endif
 
+#if defined(DE_M5FIRE_STR)
+    log_i("M5 Fire defined!");
+#endif
+
     log_i("\n\n\t\t\t\teStreamplayer version: %s\n", GIT_VERSION);
 
     [[maybe_unused]] const uint32_t idf = ESP_IDF_VERSION_PATCH + ESP_IDF_VERSION_MINOR * 10 + ESP_IDF_VERSION_MAJOR * 100;
@@ -376,6 +400,19 @@ void setup()
     log_i("ESP32 Arduino Version %d.%d.%d", ard / 100 % 10, ard / 10 % 10, ard % 10);
     log_i("CPU: %iMhz", getCpuFrequencyMhz());
     log_i("Found %i presets", NUMBER_OF_PRESETS);
+
+    SPI.setHwCs(true);
+    SPI.begin(SPI_CLK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN);
+
+#if defined(false)
+    display.init();
+    display.setTextSize((float)display.width() / 160);
+    display.printf("eStreamplayer \n%s\n", GIT_VERSION);
+
+    log_i("Disabling M5Stack DAC");
+    pinMode(25, OUTPUT); // 25 on Grey and Fire
+    digitalWrite(25, 0);
+#endif
 
     /* check if a ffat partition is defined and halt the system if it is not defined*/
     if (!esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_FAT, "ffat"))
@@ -395,6 +432,9 @@ void setup()
         log_i("Formatting FFat...");
         if (!FFat.format(true, (char *)"ffat") || !FFat.begin(0, "", 2))
         {
+#if defined(M5STACK_M5GFX)
+            display.println("formatting...");
+#endif
             log_e("FFat error while formatting. Halting.");
             while (true)
                 delay(1000); /* system is halted */
@@ -421,6 +461,10 @@ void setup()
 
     log_i("Connecting to %s...", SSID_NAME);
 
+#if defined(M5STACK_M5GFX)
+    display.println("Connecting");
+#endif
+
     playerQueue = xQueueCreate(5, sizeof(struct playerMessage));
 
     if (!playerQueue)
@@ -438,6 +482,11 @@ void setup()
         while (true)
             delay(1000); /* system is halted */
     }
+
+
+#if defined(M5STACK_M5GFX)
+    display.println("Sync NTP");
+#endif
 
     log_i("WiFi connected - IP %s", WiFi.localIP().toString().c_str());
 
@@ -611,7 +660,7 @@ void setup()
         "playerTask",          /* Name of the task */
         8000,                  /* Stack size in BYTES! */
         NULL,                  /* Task input parameter */
-        3 | portPRIVILEGE_BIT, /* Priority of the task */
+        3 | portPRIVILEGE_BIT, /* https://web.ist.utl.pt/~ist11993/FRTOS-API/group___tasks.html */
         NULL,                  /* Task handle. */
         1                      /* Core where the task should run */
     );
