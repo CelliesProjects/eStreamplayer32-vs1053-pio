@@ -48,6 +48,20 @@ static bool _paused = false;
 constexpr const auto NUMBER_OF_PRESETS = sizeof(preset) / sizeof(source);
 
 //****************************************************************************************
+//                                   D I S P L A Y _ T A S K                             *
+//****************************************************************************************
+
+#ifdef ST7789_TFT
+void featherTask(void *parameter)
+{
+    while (1)
+    {
+        log_i("hello from display task");
+        delay(5000);
+    }
+}
+#endif
+//****************************************************************************************
 //                                   P L A Y E R _ T A S K                               *
 //****************************************************************************************
 
@@ -627,6 +641,25 @@ void setup()
         while (true)
             delay(100);
     }
+
+#ifdef ST7789_TFT
+    const BaseType_t result1 = xTaskCreatePinnedToCore(
+        featherTask,           /* Function to implement the task */
+        "featherTask",         /* Name of the task */
+        8000,                  /* Stack size in BYTES! */
+        NULL,                  /* Task input parameter */
+        1,                     /* Priority of the task */
+        NULL,                  /* Task handle. */
+        1                      /* Core where the task should run */
+    );
+
+    if (result1 != pdPASS)
+    {
+        log_e("ERROR! Could not create featherTask. System halted.");
+        while (true)
+            delay(100);
+    }
+#endif
 
     playerMessage msg;
     msg.action = playerMessage::SET_VOLUME;
