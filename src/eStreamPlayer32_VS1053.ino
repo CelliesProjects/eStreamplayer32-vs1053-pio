@@ -5,6 +5,11 @@
 #include <ESPAsyncWebServer.h> /* use the esphome.io fork*/
 #include <ESP32_VS1053_Stream.h>
 
+#ifdef ST7789_TFT
+#include <Adafruit_GFX.h>    // Core graphics library
+#include <Adafruit_ST7789.h> // Hardware-specific library for ST7789
+#endif
+
 #include "secrets.h" /* Untracked file containing the WiFi credentials*/
 
 #include "playList.h"
@@ -49,9 +54,6 @@ constexpr const auto NUMBER_OF_PRESETS = sizeof(preset) / sizeof(source);
 void playerTask(void *parameter)
 {
     log_i("Starting VS1053 codec...");
-
-    SPI.setHwCs(true);
-    SPI.begin(SPI_CLK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN);
 
 #if defined(VS1053_RST_PIN)
 
@@ -363,6 +365,9 @@ static inline __attribute__((always_inline)) bool htmlUnmodified(const AsyncWebS
 // cppcheck-suppress unusedFunction
 void setup()
 {
+    SPI.setHwCs(true);
+    SPI.begin(SPI_CLK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN);
+
 #if defined(CONFIG_IDF_TARGET_ESP32S2) && ARDUHAL_LOG_LEVEL != ARDUHAL_LOG_LEVEL_NONE
     delay(3000);
     Serial.setDebugOutput(true);
