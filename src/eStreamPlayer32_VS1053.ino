@@ -5,16 +5,27 @@
 #include <ESPAsyncWebServer.h> /* use the esphome.io fork*/
 #include <ESP32_VS1053_Stream.h>
 
-#ifdef ST7789_TFT
-#include <Adafruit_GFX.h>    // Core graphics library
-#include <Adafruit_ST7789.h> // Hardware-specific library for ST7789
-#endif
-
 #include "secrets.h" /* Untracked file containing the WiFi credentials*/
 
 #include "playList.h"
 #include "index_htm_gz.h"
 #include "icons.h"
+
+#ifdef ST7789_TFT
+#include <Adafruit_GFX.h>    // Core graphics library
+#include <Adafruit_ST7789.h> // Hardware-specific library for ST7789
+struct featherMessage
+{
+    enum featherAction
+    {
+        SYSTEM_MESSAGE,
+    };
+    featherAction action;
+    char str[128];
+    size_t value = 0;
+};
+static QueueHandle_t featherQueue = NULL;
+#endif
 
 struct playerMessage
 {
@@ -29,8 +40,9 @@ struct playerMessage
     char url[PLAYLIST_MAX_URL_LENGTH];
     size_t value = 0;
 };
-
 static QueueHandle_t playerQueue = NULL;
+
+static SemaphoreHandle_t spiMutex;
 static playList_t playList;
 static AsyncWebServer server(80);
 static AsyncWebSocket ws("/ws");
@@ -51,13 +63,48 @@ constexpr const auto NUMBER_OF_PRESETS = sizeof(preset) / sizeof(source);
 //                                   D I S P L A Y _ T A S K                             *
 //****************************************************************************************
 
+// https://registry.platformio.org/libraries/adafruit/Adafruit%20ST7735%20and%20ST7789%20Library/examples/graphicstest_feather_esp32s2_tft/graphicstest_feather_esp32s2_tft.ino
+
 #ifdef ST7789_TFT
 void featherTask(void *parameter)
 {
+    // turn on the TFT back light
+    pinMode(TFT_BACKLITE, OUTPUT);
+    digitalWrite(TFT_BACKLITE, HIGH); // can be set by pwm
+
+    // turn on the TFT / I2C power supply
+    pinMode(TFT_I2C_POWER, OUTPUT);
+    digitalWrite(TFT_I2C_POWER, HIGH);
+    delay(10);
+
+    xSemaphoreTake(spiMutex, portMAX_DELAY);
+    Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
+    // initialize TFT
+    tft.init(135, 240);
+    tft.setRotation(1);
+    tft.fillScreen(ST77XX_YELLOW);
+    tft.setTextColor(ST77XX_BLACK);
+    xSemaphoreGive(spiMutex);
+
+    vTaskPrioritySet(NULL, tskIDLE_PRIORITY + 1);
+
     while (1)
     {
-        log_i("hello from display task");
-        delay(5000);
+        featherMessage msg;
+        if (xQueueReceive(featherQueue, &msg, pdMS_TO_TICKS(5)) == pdPASS)
+        {
+            xSemaphoreTake(spiMutex, portMAX_DELAY);
+            switch (msg.action)
+            {
+            case featherMessage::SYSTEM_MESSAGE:
+                tft.setCursor(10,10);
+                tft.printf("%s\n", msg.str);
+                break;
+            default:
+                log_w("unhandled feather msg type");
+            }
+            xSemaphoreGive(spiMutex);
+        }
     }
 }
 #endif
@@ -101,6 +148,7 @@ void playerTask(void *parameter)
         if (xQueueReceive(playerQueue, &msg, pdMS_TO_TICKS(5)) == pdPASS)
         {
             log_d("Minimum free stack bytes: %i", uxTaskGetStackHighWaterMark(NULL));
+            xSemaphoreTake(spiMutex, portMAX_DELAY);
             switch (msg.action)
             {
             case playerMessage::SET_VOLUME:
@@ -121,6 +169,7 @@ void playerTask(void *parameter)
             default:
                 log_e("error: unhandled audio action: %i", msg.action);
             }
+            xSemaphoreGive(spiMutex);
         }
 
         constexpr const auto MAX_UPDATE_FREQ_HZ = 3;
@@ -131,11 +180,20 @@ void playerTask(void *parameter)
         {
             log_d("Buffer status: %s", audio.bufferStatus());
 
+#ifdef ST7789_TFT
+            featherMessage msg;
+            snprintf(msg.str, sizeof(msg.str), "%i/%i", audio.position(), audio.size());
+            msg.action = featherMessage::SYSTEM_MESSAGE;
+            xQueueSend(featherQueue, &msg, portMAX_DELAY); 
+#endif
+
             ws.printfAll("progress\n%i\n%i\n", audio.position(), audio.size());
             savedTime = millis();
             _savedPosition = audio.position();
         }
+        xSemaphoreTake(spiMutex, portMAX_DELAY);
         audio.loop();
+        xSemaphoreGive(spiMutex);
     }
 }
 
@@ -381,6 +439,37 @@ void setup()
 {
     SPI.setHwCs(true);
     SPI.begin(SPI_CLK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN);
+
+#ifdef ST7789_TFT
+    spiMutex = xSemaphoreCreateMutex();
+    featherQueue = xQueueCreate(5, sizeof(struct featherMessage));
+
+    if (!featherQueue)
+    {
+        log_e("FATAL error! could not create feather queue HALTED!");
+        while (1)
+            delay(100);
+    }
+
+    const BaseType_t result1 = xTaskCreatePinnedToCore(
+        featherTask,   /* Function to implement the task */
+        "featherTask", /* Name of the task */
+        8000,          /* Stack size in BYTES! */
+        NULL,          /* Task input parameter */
+        4,             /* Priority of the task */
+        NULL,          /* Task handle. */
+        1              /* Core where the task should run */
+    );
+
+    if (result1 != pdPASS)
+    {
+        log_e("ERROR! Could not create featherTask. System halted.");
+        while (true)
+            delay(100);
+    }
+
+    // wait for feather to be up before continuing
+#endif
 
 #if defined(CONFIG_IDF_TARGET_ESP32S2) && ARDUHAL_LOG_LEVEL != ARDUHAL_LOG_LEVEL_NONE
     delay(3000);
@@ -641,25 +730,6 @@ void setup()
         while (true)
             delay(100);
     }
-
-#ifdef ST7789_TFT
-    const BaseType_t result1 = xTaskCreatePinnedToCore(
-        featherTask,           /* Function to implement the task */
-        "featherTask",         /* Name of the task */
-        8000,                  /* Stack size in BYTES! */
-        NULL,                  /* Task input parameter */
-        1,                     /* Priority of the task */
-        NULL,                  /* Task handle. */
-        1                      /* Core where the task should run */
-    );
-
-    if (result1 != pdPASS)
-    {
-        log_e("ERROR! Could not create featherTask. System halted.");
-        while (true)
-            delay(100);
-    }
-#endif
 
     playerMessage msg;
     msg.action = playerMessage::SET_VOLUME;
