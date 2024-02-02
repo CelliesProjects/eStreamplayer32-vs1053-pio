@@ -19,6 +19,7 @@ struct featherMessage
     enum featherAction
     {
         SYSTEM_MESSAGE,
+        PROGRESS_MESSAGE,
     };
     featherAction action;
     char str[128];
@@ -84,6 +85,7 @@ void featherTask(void *parameter)
     tft.setRotation(1);
     tft.fillScreen(ST77XX_YELLOW);
     tft.setTextColor(ST77XX_BLACK);
+    tft.setTextSize(2);
     xSemaphoreGive(spiMutex);
 
     vTaskPrioritySet(NULL, tskIDLE_PRIORITY + 1);
@@ -97,9 +99,22 @@ void featherTask(void *parameter)
             switch (msg.action)
             {
             case featherMessage::SYSTEM_MESSAGE:
-                tft.setCursor(10,10);
+                tft.fillRect(10, 10, 150, 20, ST77XX_YELLOW);
+                tft.setCursor(10, 10);
                 tft.printf("%s\n", msg.str);
                 break;
+            case featherMessage::PROGRESS_MESSAGE:
+            {
+                // draw a filled rect and a empty rect to represent the progress
+                const auto songpos = strtol(msg.str, NULL, 10);
+                char *pch = strstr(msg.str, "/");
+                pch++;
+                const auto lastpos = strtol(pch, NULL, 10);
+                const auto filled = map(songpos, 0, lastpos, 0, tft.width() + 2);
+                tft.fillRect(0, 0, filled, 20, ST77XX_BLUE);
+                tft.fillRect(filled, 0, tft.width() - filled, 20, ST77XX_WHITE);
+            }
+            break;
             default:
                 log_w("unhandled feather msg type");
             }
@@ -183,8 +198,8 @@ void playerTask(void *parameter)
 #ifdef ST7789_TFT
             featherMessage msg;
             snprintf(msg.str, sizeof(msg.str), "%i/%i", audio.position(), audio.size());
-            msg.action = featherMessage::SYSTEM_MESSAGE;
-            xQueueSend(featherQueue, &msg, portMAX_DELAY); 
+            msg.action = featherMessage::PROGRESS_MESSAGE;
+            xQueueSend(featherQueue, &msg, portMAX_DELAY);
 #endif
 
             ws.printfAll("progress\n%i\n%i\n", audio.position(), audio.size());
