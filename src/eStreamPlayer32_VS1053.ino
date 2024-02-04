@@ -123,7 +123,7 @@ void featherTask(void *parameter)
             {
                 constexpr const int HEIGHT_IN_PIXELS = 20;
                 constexpr const int HEIGHT_OFFSET = 0;
-                const int16_t filled = map_range(msg.value1, 0, msg.value2, 0, tft.width());
+                const int16_t filled = map_range(msg.value1, 0, msg.value2, 0, tft.width() + 1);
                 tft.fillRect(0, HEIGHT_OFFSET, filled, HEIGHT_IN_PIXELS, ST77XX_BLUE);
                 tft.fillRect(filled, HEIGHT_OFFSET, tft.width() - filled, HEIGHT_IN_PIXELS, ST77XX_WHITE);
                 break;
@@ -206,7 +206,7 @@ void playerTask(void *parameter)
 #ifdef ST7789_TFT
                 {
                     auto offset = msg.value;
-                    
+
                     featherMessage msg;
                     if (!offset)
                     {
@@ -337,11 +337,9 @@ void startNextItem()
     {
         playList.setCurrentItem(playList.currentItem() + 1);
         startItem(playList.currentItem());
+        return;
     }
-    else
-    {
-        playlistHasEnded();
-    }
+    playlistHasEnded();
 }
 
 void playlistHasEnded()
@@ -357,9 +355,9 @@ void playlistHasEnded()
     {
         featherMessage msg;
         msg.action = featherMessage::CLEAR_SCREEN;
-        xQueueSendFromISR(featherQueue, &msg, NULL);
+        xQueueSend(featherQueue, &msg, portMAX_DELAY);
         msg.action = featherMessage::SHOW_IPADDRESS;
-        xQueueSendFromISR(featherQueue, &msg, NULL);
+        xQueueSend(featherQueue, &msg, portMAX_DELAY);
     }
 #endif
 }
