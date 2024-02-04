@@ -24,7 +24,8 @@ struct featherMessage
         PROGRESS_MESSAGE,
         CLEAR_SCREEN,
         SHOW_STATION,
-        SHOW_TITLE
+        SHOW_TITLE,
+        SHOW_IPADDRESS
     };
     featherAction action;
     char str[256];
@@ -139,6 +140,11 @@ void featherTask(void *parameter)
                 tft.print(msg.str);
             }
             break;
+            case featherMessage::SHOW_IPADDRESS:
+                tft.setCursor(0, 65);
+                tft.print(WiFi.localIP().toString().c_str());
+                break;
+
             default:
                 log_w("unhandled feather msg type");
             }
@@ -196,15 +202,13 @@ void playerTask(void *parameter)
                 audio.stopSong();
                 _paused = false;
                 ws.textAll("status\nplaying\n");
-                if (!audio.connecttohost(msg.url, LIBRARY_USER, LIBRARY_PWD, msg.value))
-                    startNextItem();
-                _currentSize = audio.size();
-                _savedPosition = audio.position();
 
 #ifdef ST7789_TFT
                 {
+                    auto offset = msg.value;
+                    
                     featherMessage msg;
-                    if (!_currentSize)
+                    if (!offset)
                     {
                         msg.action = featherMessage::CLEAR_SCREEN;
                         xQueueSend(featherQueue, &msg, portMAX_DELAY);
@@ -235,6 +239,10 @@ void playerTask(void *parameter)
                 }
 #endif
 
+                if (!audio.connecttohost(msg.url, LIBRARY_USER, LIBRARY_PWD, msg.value))
+                    startNextItem();
+                _currentSize = audio.size();
+                _savedPosition = audio.position();
                 break;
             case playerMessage::STOPSONG:
                 audio.stopSong();
@@ -349,6 +357,8 @@ void playlistHasEnded()
     {
         featherMessage msg;
         msg.action = featherMessage::CLEAR_SCREEN;
+        xQueueSendFromISR(featherQueue, &msg, NULL);
+        msg.action = featherMessage::SHOW_IPADDRESS;
         xQueueSendFromISR(featherQueue, &msg, NULL);
     }
 #endif
