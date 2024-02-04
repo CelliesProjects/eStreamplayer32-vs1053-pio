@@ -14,16 +14,22 @@
 #ifdef ST7789_TFT
 #include <Adafruit_GFX.h>    // Core graphics library
 #include <Adafruit_ST7789.h> // Hardware-specific library for ST7789
+#include <Fonts/FreeSansBold9pt7b.h>
+
 struct featherMessage
 {
     enum featherAction
     {
         SYSTEM_MESSAGE,
         PROGRESS_MESSAGE,
+        CLEAR_SCREEN,
+        SHOW_STATION,
+        SHOW_TITLE
     };
     featherAction action;
-    char str[128];
-    size_t value = 0;
+    char str[256];
+    size_t value1 = 0;
+    size_t value2 = 0;
 };
 static QueueHandle_t featherQueue = NULL;
 #endif
@@ -63,10 +69,17 @@ constexpr const auto NUMBER_OF_PRESETS = sizeof(preset) / sizeof(source);
 //****************************************************************************************
 //                                   D I S P L A Y _ T A S K                             *
 //****************************************************************************************
-
 // https://registry.platformio.org/libraries/adafruit/Adafruit%20ST7735%20and%20ST7789%20Library/examples/graphicstest_feather_esp32s2_tft/graphicstest_feather_esp32s2_tft.ino
 
 #ifdef ST7789_TFT
+
+double map_range(double input, double input_start, double input_end, double output_start, double output_end)
+{
+    double input_range = input_end - input_start;
+    double output_range = output_end - output_start;
+    return (input - input_start) * (output_range / input_range) + output_start;
+}
+
 void featherTask(void *parameter)
 {
     // turn on the TFT back light
@@ -78,10 +91,11 @@ void featherTask(void *parameter)
     digitalWrite(TFT_I2C_POWER, HIGH);
     delay(10);
 
+    const auto DISPLAY_BCKGRND = ST77XX_YELLOW;
+
     xSemaphoreTake(spiMutex, portMAX_DELAY);
     Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
-    // initialize TFT
-    tft.init(135, 240);
+    tft.init(135, 240, SPI_MODE0);
     tft.setRotation(1);
     tft.fillScreen(ST77XX_YELLOW);
     tft.setTextColor(ST77XX_BLACK);
@@ -92,27 +106,37 @@ void featherTask(void *parameter)
 
     while (1)
     {
-        featherMessage msg;
-        if (xQueueReceive(featherQueue, &msg, pdMS_TO_TICKS(5)) == pdPASS)
+        featherMessage msg = {};
+        if (xQueueReceive(featherQueue, &msg, portMAX_DELAY) == pdTRUE)
         {
             xSemaphoreTake(spiMutex, portMAX_DELAY);
             switch (msg.action)
             {
             case featherMessage::SYSTEM_MESSAGE:
-                tft.fillRect(10, 10, 150, 20, ST77XX_YELLOW);
-                tft.setCursor(10, 10);
-                tft.printf("%s\n", msg.str);
+                tft.setTextColor(ST77XX_BLACK, ST77XX_YELLOW);
+                tft.setCursor(0, 0);
+                tft.setTextSize(2);
+                tft.print(msg.str);
                 break;
             case featherMessage::PROGRESS_MESSAGE:
             {
-                // draw a filled rect and a empty rect to represent the progress
-                const auto songpos = strtol(msg.str, NULL, 10);
-                char *pch = strstr(msg.str, "/");
-                pch++;
-                const auto lastpos = strtol(pch, NULL, 10);
-                const auto filled = map(songpos, 0, lastpos, 0, tft.width() + 2);
-                tft.fillRect(0, 0, filled, 20, ST77XX_BLUE);
-                tft.fillRect(filled, 0, tft.width() - filled, 20, ST77XX_WHITE);
+                constexpr const int HEIGHT_IN_PIXELS = 20;
+                constexpr const int HEIGHT_OFFSET = 0;
+                const int16_t filled = map_range(msg.value1, 0, msg.value2, 0, tft.width());
+                tft.fillRect(0, HEIGHT_OFFSET, filled, HEIGHT_IN_PIXELS, ST77XX_BLUE);
+                tft.fillRect(filled, HEIGHT_OFFSET, tft.width() - filled, HEIGHT_IN_PIXELS, ST77XX_WHITE);
+                break;
+            }
+            case featherMessage::CLEAR_SCREEN:
+                tft.fillScreen(DISPLAY_BCKGRND);
+                break;
+            case featherMessage::SHOW_STATION:
+                [[fallthrough]];
+            case featherMessage::SHOW_TITLE:
+            {
+                tft.setTextColor(ST77XX_BLACK, ST77XX_YELLOW);
+                tft.setCursor(0, 34);
+                tft.print(msg.str);
             }
             break;
             default:
@@ -160,9 +184,8 @@ void playerTask(void *parameter)
     while (true)
     {
         playerMessage msg;
-        if (xQueueReceive(playerQueue, &msg, pdMS_TO_TICKS(5)) == pdPASS)
+        if (xQueueReceive(playerQueue, &msg, pdMS_TO_TICKS(5)) == pdTRUE)
         {
-            log_d("Minimum free stack bytes: %i", uxTaskGetStackHighWaterMark(NULL));
             xSemaphoreTake(spiMutex, portMAX_DELAY);
             switch (msg.action)
             {
@@ -177,6 +200,41 @@ void playerTask(void *parameter)
                     startNextItem();
                 _currentSize = audio.size();
                 _savedPosition = audio.position();
+
+#ifdef ST7789_TFT
+                {
+                    featherMessage msg;
+                    if (!_currentSize)
+                    {
+                        msg.action = featherMessage::CLEAR_SCREEN;
+                        xQueueSend(featherQueue, &msg, portMAX_DELAY);
+                    }
+                    playListItem item;
+                    playList.get(playList.currentItem(), item);
+
+                    switch (item.type)
+                    {
+                    case HTTP_FILE:
+                        snprintf(msg.str, sizeof(msg.str), "%s", item.url.substring(item.url.lastIndexOf("/") + 1).c_str());
+                        break;
+                    case HTTP_FOUND:
+                        snprintf(msg.str, sizeof(msg.str), "%s", item.name.c_str());
+                        break;
+                    case HTTP_FAVORITE:
+                        snprintf(msg.str, sizeof(msg.str), "%s", item.name.c_str());
+                        break;
+                    case HTTP_PRESET:
+                        snprintf(msg.str, sizeof(msg.str), "%s", preset[item.index].name.c_str());
+                        break;
+                    default:
+                        log_w("unhandled type");
+                    }
+
+                    msg.action = featherMessage::SHOW_STATION;
+                    xQueueSend(featherQueue, &msg, portMAX_DELAY);
+                }
+#endif
+
                 break;
             case playerMessage::STOPSONG:
                 audio.stopSong();
@@ -197,7 +255,8 @@ void playerTask(void *parameter)
 
 #ifdef ST7789_TFT
             featherMessage msg;
-            snprintf(msg.str, sizeof(msg.str), "%i/%i", audio.position(), audio.size());
+            msg.value1 = audio.position();
+            msg.value2 = audio.size();
             msg.action = featherMessage::PROGRESS_MESSAGE;
             xQueueSend(featherQueue, &msg, portMAX_DELAY);
 #endif
@@ -285,6 +344,14 @@ void playlistHasEnded()
     char versionString[50];
     snprintf(versionString, sizeof(versionString), "eStreamPlayer %s", GIT_VERSION);
     audio_showstation(versionString);
+
+#ifdef ST7789_TFT
+    {
+        featherMessage msg;
+        msg.action = featherMessage::CLEAR_SCREEN;
+        xQueueSendFromISR(featherQueue, &msg, NULL);
+    }
+#endif
 }
 
 void upDatePlaylistOnClients()
@@ -454,9 +521,9 @@ void setup()
 {
     SPI.setHwCs(true);
     SPI.begin(SPI_CLK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN);
+    spiMutex = xSemaphoreCreateMutex(); // outside the ST77*9 area so the SPI can continue to lock/unlock for vs1053
 
 #ifdef ST7789_TFT
-    spiMutex = xSemaphoreCreateMutex();
     featherQueue = xQueueCreate(5, sizeof(struct featherMessage));
 
     if (!featherQueue)
@@ -482,8 +549,6 @@ void setup()
         while (true)
             delay(100);
     }
-
-    // wait for feather to be up before continuing
 #endif
 
 #if defined(CONFIG_IDF_TARGET_ESP32S2) && ARDUHAL_LOG_LEVEL != ARDUHAL_LOG_LEVEL_NONE
@@ -776,6 +841,17 @@ void audio_showstation(const char *info)
     snprintf(showstation, sizeof(showstation), "showstation\n%s\n%s", info, typeStr[item.type]);
     log_d("%s", showstation);
     ws.textAll(showstation);
+    /*
+    #ifdef ST7789_TFT
+        featherMessage msg;
+        msg.action = featherMessage::CLEAR_SCREEN;
+        xQueueSend(featherQueue, &msg, portMAX_DELAY);
+
+        snprintf(msg.str, sizeof(msg.str), "%s", info);
+        msg.action = featherMessage::SHOW_STATION;
+        xQueueSend(featherQueue, &msg, portMAX_DELAY);
+    #endif
+    */
 }
 
 #define MAX_METADATA_LENGTH 255
