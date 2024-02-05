@@ -94,15 +94,16 @@ void featherTask(void *parameter)
     digitalWrite(TFT_I2C_POWER, HIGH);
     delay(10);
 
-    const auto DISPLAY_BCKGRND = ST77XX_YELLOW;
+    const auto BACKGROUND_COLOR = ST77XX_YELLOW;
 
     xSemaphoreTake(spiMutex, portMAX_DELAY);
     Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
     tft.init(135, 240, SPI_MODE0);
     tft.setRotation(1);
-    tft.fillScreen(ST77XX_YELLOW);
-    tft.setTextColor(ST77XX_BLACK);
-    tft.setTextSize(2);
+    tft.fillScreen(BACKGROUND_COLOR);
+    tft.setTextColor(ST77XX_BLACK, BACKGROUND_COLOR);
+    tft.setTextSize(3);
+    tft.setTextWrap(false);
     tft.printf("%s\nversion %s\nbooting...", PROGRAM_NAME, GIT_VERSION);
     xSemaphoreGive(spiMutex);
 
@@ -111,35 +112,36 @@ void featherTask(void *parameter)
     while (1)
     {
         featherMessage msg = {};
-        if (xQueueReceive(featherQueue, &msg, portMAX_DELAY) == pdTRUE)
+        if (xQueueReceive(featherQueue, &msg, pdTICKS_TO_MS(100)) == pdTRUE)
         {
             xSemaphoreTake(spiMutex, portMAX_DELAY);
             switch (msg.action)
             {
             case featherMessage::SYSTEM_MESSAGE:
-                tft.setTextColor(ST77XX_BLACK, ST77XX_YELLOW);
                 tft.setCursor(0, 0);
-                tft.setTextSize(2);
                 tft.print(msg.str);
                 break;
             case featherMessage::PROGRESS_MESSAGE:
             {
                 constexpr const int HEIGHT_IN_PIXELS = 20;
                 constexpr const int HEIGHT_OFFSET = 0;
-                const int16_t filled = map_range(msg.value1, 0, msg.value2, 0, tft.width() + 1);
-                tft.fillRect(0, HEIGHT_OFFSET, filled, HEIGHT_IN_PIXELS, ST77XX_BLUE);
-                tft.fillRect(filled, HEIGHT_OFFSET, tft.width() - filled, HEIGHT_IN_PIXELS, ST77XX_WHITE);
+                const int16_t FILLED_AREA = map_range(msg.value1, 0, msg.value2, 0, tft.width() + 1);
+                tft.fillRect(0, HEIGHT_OFFSET, FILLED_AREA, HEIGHT_IN_PIXELS, ST77XX_BLUE);
+                tft.fillRect(FILLED_AREA, HEIGHT_OFFSET, tft.width() - FILLED_AREA, HEIGHT_IN_PIXELS, ST77XX_WHITE);
                 break;
             }
             case featherMessage::CLEAR_SCREEN:
-                tft.fillScreen(DISPLAY_BCKGRND);
+                tft.fillScreen(BACKGROUND_COLOR);
                 break;
             case featherMessage::SHOW_STATION:
-                [[fallthrough]];
+            {
+                tft.setCursor(0, 34);
+                tft.print(msg.str);
+            }
+            break;
             case featherMessage::SHOW_TITLE:
             {
-                tft.setTextColor(ST77XX_BLACK, ST77XX_YELLOW);
-                tft.setCursor(0, 34);
+                tft.setCursor(0, 64);
                 tft.print(msg.str);
             }
             break;
@@ -153,6 +155,16 @@ void featherTask(void *parameter)
             }
             xSemaphoreGive(spiMutex);
         }
+
+        // print a clock on the last line updating every SECOND
+        time_t rawtime;
+        struct tm *timeinfo;
+        xSemaphoreTake(spiMutex, portMAX_DELAY);
+        time(&rawtime);
+        timeinfo = localtime(&rawtime);
+        tft.setCursor(-140, 110);
+        tft.printf(asctime(timeinfo));
+        xSemaphoreGive(spiMutex);
     }
 }
 #endif
@@ -308,22 +320,13 @@ void startItem(uint8_t const index, size_t offset = 0)
     {
     case HTTP_FILE:
     {
-        {
-            char name[item.url.length() - item.url.lastIndexOf('/')];
-            auto pos = item.url.lastIndexOf('/') + 1;
-            auto cnt = 0;
-            while (pos < item.url.length())
-                name[cnt++] = item.url.charAt(pos++);
-            name[cnt] = 0;
-            audio_showstation(name);
-        }
-        char path[item.url.lastIndexOf('/') + 1];
-        auto pos = 0;
+        char name[item.url.length() - item.url.lastIndexOf('/')];
+        auto pos = item.url.lastIndexOf('/') + 1;
         auto cnt = 0;
-        while (pos < item.url.lastIndexOf('/'))
-            path[cnt++] = item.url.charAt(pos++);
-        path[pos] = 0;
-        audio_showstreamtitle(path);
+        while (pos < item.url.length())
+            name[cnt++] = item.url.charAt(pos++);
+        name[cnt] = 0;
+        audio_showstation(name);
     }
     break;
     case HTTP_PRESET:
@@ -852,17 +855,6 @@ void audio_showstation(const char *info)
     snprintf(showstation, sizeof(showstation), "showstation\n%s\n%s", info, typeStr[item.type]);
     log_d("%s", showstation);
     ws.textAll(showstation);
-    /*
-    #ifdef ST7789_TFT
-        featherMessage msg;
-        msg.action = featherMessage::CLEAR_SCREEN;
-        xQueueSend(featherQueue, &msg, portMAX_DELAY);
-
-        snprintf(msg.str, sizeof(msg.str), "%s", info);
-        msg.action = featherMessage::SHOW_STATION;
-        xQueueSend(featherQueue, &msg, portMAX_DELAY);
-    #endif
-    */
 }
 
 #define MAX_METADATA_LENGTH 255
@@ -872,6 +864,14 @@ void audio_showstreamtitle(const char *info)
     snprintf(streamtitle, sizeof(streamtitle), "streamtitle\n%s", percentEncode(info).c_str());
     log_d("%s", streamtitle);
     ws.textAll(streamtitle);
+
+#ifdef ST7789_TFT
+    log_i("stream info: %s", info);
+    featherMessage msg;
+    snprintf(msg.str, sizeof(msg.str), "%s", info);
+    msg.action = featherMessage::SHOW_TITLE;
+    xQueueSend(featherQueue, &msg, portMAX_DELAY);
+#endif
 }
 
 void audio_eof_stream(const char *info)
