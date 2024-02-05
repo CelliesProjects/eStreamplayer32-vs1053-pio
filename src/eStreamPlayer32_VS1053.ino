@@ -16,6 +16,8 @@
 #include <Adafruit_ST7789.h> // Hardware-specific library for ST7789
 #include <Fonts/FreeSansBold9pt7b.h>
 
+const char PROGRAM_NAME[] = "eStreamPlayer";
+
 struct featherMessage
 {
     enum featherAction
@@ -101,6 +103,7 @@ void featherTask(void *parameter)
     tft.fillScreen(ST77XX_YELLOW);
     tft.setTextColor(ST77XX_BLACK);
     tft.setTextSize(2);
+    tft.printf("%s\nversion %s\nbooting...", PROGRAM_NAME, GIT_VERSION);
     xSemaphoreGive(spiMutex);
 
     vTaskPrioritySet(NULL, tskIDLE_PRIORITY + 1);
@@ -348,7 +351,7 @@ void playlistHasEnded()
     playList.setCurrentItem(PLAYLIST_STOPPED);
     updateCurrentItemOnClients();
     char versionString[50];
-    snprintf(versionString, sizeof(versionString), "eStreamPlayer %s", GIT_VERSION);
+    snprintf(versionString, sizeof(versionString), "%s %s", PROGRAM_NAME, GIT_VERSION);
     audio_showstation(versionString);
 
 #ifdef ST7789_TFT
@@ -564,7 +567,7 @@ void setup()
     Serial.setDebugOutput(true);
 #endif
 
-    log_i("\n\n\t\t\t\teStreamplayer version: %s\n", GIT_VERSION);
+    log_i("\n\n\t\t\t\t%s version: %s\n", PROGRAM_NAME, GIT_VERSION);
 
     [[maybe_unused]] const uint32_t idf = ESP_IDF_VERSION_PATCH + ESP_IDF_VERSION_MINOR * 10 + ESP_IDF_VERSION_MAJOR * 100;
     [[maybe_unused]] const uint32_t ard = ESP_ARDUINO_VERSION_PATCH + ESP_ARDUINO_VERSION_MINOR * 10 + ESP_ARDUINO_VERSION_MAJOR * 100;
