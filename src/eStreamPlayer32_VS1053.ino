@@ -104,7 +104,7 @@ void featherTask(void *parameter)
     tft.setTextColor(ST77XX_BLACK, BACKGROUND_COLOR);
     tft.setTextSize(3);
     tft.setTextWrap(false);
-    tft.printf("%s\nversion %s\nbooting...", PROGRAM_NAME, GIT_VERSION);
+    tft.printf("%s\n%s\nbooting...", PROGRAM_NAME, GIT_VERSION);
     xSemaphoreGive(spiMutex);
 
     vTaskPrioritySet(NULL, tskIDLE_PRIORITY + 1);
@@ -131,40 +131,39 @@ void featherTask(void *parameter)
                 break;
             }
             case featherMessage::CLEAR_SCREEN:
-                tft.fillScreen(BACKGROUND_COLOR);
+                tft.fillRect(0, 0, tft.width(), tft.height() - 30, BACKGROUND_COLOR); // TODO: only fill the top part of the screen, leaving the clock area untouched
                 break;
             case featherMessage::SHOW_STATION:
-            {
                 tft.setCursor(0, 34);
                 tft.print(msg.str);
-            }
-            break;
+                break;
             case featherMessage::SHOW_TITLE:
-            {
                 tft.setCursor(0, 64);
                 tft.print(msg.str);
-            }
-            break;
+                break;
             case featherMessage::SHOW_IPADDRESS:
                 tft.setCursor(0, 65);
                 tft.print(WiFi.localIP().toString().c_str());
                 break;
-
             default:
                 log_w("unhandled feather msg type");
             }
             xSemaphoreGive(spiMutex);
         }
 
-        // print a clock on the last line updating every SECOND
-        time_t rawtime;
-        struct tm *timeinfo;
-        xSemaphoreTake(spiMutex, portMAX_DELAY);
+        static time_t prevtime = 0;
+        static time_t rawtime;
         time(&rawtime);
-        timeinfo = localtime(&rawtime);
-        tft.setCursor(-140, 110);
-        tft.printf(asctime(timeinfo));
-        xSemaphoreGive(spiMutex);
+        if (rawtime != prevtime)
+        {
+            char buffer[10];
+            strftime(buffer, sizeof(buffer), "%X", localtime(&rawtime));
+            xSemaphoreTake(spiMutex, portMAX_DELAY);
+            tft.setCursor(5, 110);
+            tft.printf(buffer);
+            xSemaphoreGive(spiMutex);
+            prevtime = rawtime;
+        }
     }
 }
 #endif
@@ -254,8 +253,13 @@ void playerTask(void *parameter)
                 }
 #endif
 
+                xSemaphoreGive(spiMutex); // connecttohost() does not touch the spi bus
+
                 if (!audio.connecttohost(msg.url, LIBRARY_USER, LIBRARY_PWD, msg.value))
                     startNextItem();
+
+                xSemaphoreTake(spiMutex, portMAX_DELAY);
+
                 _currentSize = audio.size();
                 _savedPosition = audio.position();
                 break;
@@ -272,7 +276,7 @@ void playerTask(void *parameter)
         constexpr const auto UPDATE_INTERVAL_MS = 1000 / MAX_UPDATE_FREQ_HZ;
         static unsigned long savedTime = millis();
 
-        if (ws.count() && audio.size() && millis() - savedTime > UPDATE_INTERVAL_MS && audio.position() != _savedPosition)
+        if (audio.size() && millis() - savedTime > UPDATE_INTERVAL_MS && audio.position() != _savedPosition)
         {
             log_d("Buffer status: %s", audio.bufferStatus());
 
@@ -535,7 +539,7 @@ void setup()
 {
     SPI.setHwCs(true);
     SPI.begin(SPI_CLK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN);
-    spiMutex = xSemaphoreCreateMutex(); // outside the ST77*9 area so the SPI can continue to lock/unlock for vs1053
+    spiMutex = xSemaphoreCreateMutex(); // outside the ST77*9 area so the SPI can continue to lock/unlock for vs1053 when running on another board
 
 #ifdef ST7789_TFT
     featherQueue = xQueueCreate(5, sizeof(struct featherMessage));
@@ -866,11 +870,14 @@ void audio_showstreamtitle(const char *info)
     ws.textAll(streamtitle);
 
 #ifdef ST7789_TFT
-    log_i("stream info: %s", info);
+    if (playList.currentItem() == PLAYLIST_STOPPED)
+        return;
+
     featherMessage msg;
     snprintf(msg.str, sizeof(msg.str), "%s", info);
     msg.action = featherMessage::SHOW_TITLE;
     xQueueSend(featherQueue, &msg, portMAX_DELAY);
+
 #endif
 }
 
