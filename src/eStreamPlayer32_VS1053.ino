@@ -11,12 +11,12 @@
 #include "index_htm_gz.h"
 #include "icons.h"
 
-#ifdef ST7789_TFT
+static const char PROGRAM_NAME[] = "eStreamPlayer";
+
+#if ST7789_TFT
 #include <Adafruit_GFX.h>    // Core graphics library
 #include <Adafruit_ST7789.h> // Hardware-specific library for ST7789
 #include <Fonts/FreeSansBold9pt7b.h>
-
-const char PROGRAM_NAME[] = "eStreamPlayer";
 
 struct featherMessage
 {
