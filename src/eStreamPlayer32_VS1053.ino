@@ -11,16 +11,23 @@
 #include "index_htm_gz.h"
 #include "icons.h"
 
-static const char PROGRAM_NAME[] = "eStreamPlayer";
+const char PROGRAM_NAME[] = "eStreamPlayer";
 
-#if ST7789_TFT
+void startNextItem();
+void playlistHasEnded();
+void websocketEventHandler(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len);
+void handleSingleFrame(AsyncWebSocketClient *client, uint8_t *data, size_t len);
+void handleMultiFrame(AsyncWebSocketClient *client, uint8_t *data, size_t len, AwsFrameInfo *info);
+String percentEncode(const char *plaintext);
+
+#ifdef ST7789_TFT
 #include <Adafruit_GFX.h>    // Core graphics library
 #include <Adafruit_ST7789.h> // Hardware-specific library for ST7789
 #include <Fonts/FreeSansBold9pt7b.h>
 
-struct featherMessage
+struct st7789Message
 {
-    enum featherAction
+    enum action
     {
         SYSTEM_MESSAGE,
         PROGRESS_MESSAGE,
@@ -29,7 +36,7 @@ struct featherMessage
         SHOW_TITLE,
         SHOW_IPADDRESS
     };
-    featherAction action;
+    action action;
     char str[256];
     size_t value1 = 0;
     size_t value2 = 0;
@@ -39,14 +46,14 @@ static QueueHandle_t featherQueue = NULL;
 
 struct playerMessage
 {
-    enum playerAction
+    enum action
     {
         SET_VOLUME,
         CONNECTTOHOST,
         STOPSONG,
         SETTONE
     };
-    playerAction action;
+    action action;
     char url[PLAYLIST_MAX_URL_LENGTH];
     size_t value = 0;
 };
@@ -66,15 +73,16 @@ static auto _playerVolume = VS1053_INITIALVOLUME;
 static size_t _savedPosition = 0;
 static size_t _currentSize = 0;
 static bool _paused = false;
+static bool _codecRunning = false;
+
 
 constexpr const auto NUMBER_OF_PRESETS = sizeof(preset) / sizeof(source);
 
+#ifdef ST7789_TFT
 //****************************************************************************************
-//                                   D I S P L A Y _ T A S K                             *
+//                                   S T 7 7 8 9 _ T A S K                             *
 //****************************************************************************************
 // https://registry.platformio.org/libraries/adafruit/Adafruit%20ST7735%20and%20ST7789%20Library/examples/graphicstest_feather_esp32s2_tft/graphicstest_feather_esp32s2_tft.ino
-
-#ifdef ST7789_TFT
 
 double map_range(double input, double input_start, double input_end, double output_start, double output_end)
 {
@@ -83,7 +91,7 @@ double map_range(double input, double input_start, double input_end, double outp
     return (input - input_start) * (output_range / input_range) + output_start;
 }
 
-void featherTask(void *parameter)
+void st7789Task(void *parameter)
 {
     // turn on the TFT back light
     pinMode(TFT_BACKLITE, OUTPUT);
@@ -109,19 +117,24 @@ void featherTask(void *parameter)
 
     vTaskPrioritySet(NULL, tskIDLE_PRIORITY + 1);
 
+    while (!_codecRunning) 
+    {
+        delay(100);
+    }
+
     while (1)
     {
-        featherMessage msg = {};
+        st7789Message msg = {};
         if (xQueueReceive(featherQueue, &msg, pdTICKS_TO_MS(100)) == pdTRUE)
         {
             xSemaphoreTake(spiMutex, portMAX_DELAY);
             switch (msg.action)
             {
-            case featherMessage::SYSTEM_MESSAGE:
+            case st7789Message::SYSTEM_MESSAGE:
                 tft.setCursor(0, 0);
                 tft.print(msg.str);
                 break;
-            case featherMessage::PROGRESS_MESSAGE:
+            case st7789Message::PROGRESS_MESSAGE:
             {
                 constexpr const int HEIGHT_IN_PIXELS = 20;
                 constexpr const int HEIGHT_OFFSET = 0;
@@ -130,18 +143,18 @@ void featherTask(void *parameter)
                 tft.fillRect(FILLED_AREA, HEIGHT_OFFSET, tft.width() - FILLED_AREA, HEIGHT_IN_PIXELS, ST77XX_WHITE);
                 break;
             }
-            case featherMessage::CLEAR_SCREEN:
+            case st7789Message::CLEAR_SCREEN:
                 tft.fillRect(0, 0, tft.width(), tft.height() - 30, BACKGROUND_COLOR); // TODO: only fill the top part of the screen, leaving the clock area untouched
                 break;
-            case featherMessage::SHOW_STATION:
+            case st7789Message::SHOW_STATION:
                 tft.setCursor(0, 34);
                 tft.print(msg.str);
                 break;
-            case featherMessage::SHOW_TITLE:
+            case st7789Message::SHOW_TITLE:
                 tft.setCursor(0, 64);
                 tft.print(msg.str);
                 break;
-            case featherMessage::SHOW_IPADDRESS:
+            case st7789Message::SHOW_IPADDRESS:
                 tft.setCursor(0, 65);
                 tft.print(WiFi.localIP().toString().c_str());
                 break;
@@ -187,12 +200,14 @@ void playerTask(void *parameter)
 
     static ESP32_VS1053_Stream audio;
 
+    xSemaphoreTake(spiMutex, portMAX_DELAY);
     if (!audio.startDecoder(VS1053_CS_PIN, VS1053_DCS_PIN, VS1053_DREQ_PIN) || !audio.isChipConnected())
     {
         log_e("VS1053 board could not init\nSystem halted");
         while (true)
             delay(100);
     }
+    xSemaphoreGive(spiMutex);
 
     log_d("Heap: %d", ESP.getHeapSize());
     log_d("Free: %d", ESP.getFreeHeap());
@@ -200,6 +215,8 @@ void playerTask(void *parameter)
     log_d("Free: %d", ESP.getFreePsram());
 
     log_i("Ready to rock!");
+
+   _codecRunning = true;
 
     while (true)
     {
@@ -221,10 +238,10 @@ void playerTask(void *parameter)
                 {
                     auto offset = msg.value;
 
-                    featherMessage msg;
+                    st7789Message msg;
                     if (!offset)
                     {
-                        msg.action = featherMessage::CLEAR_SCREEN;
+                        msg.action = st7789Message::CLEAR_SCREEN;
                         xQueueSend(featherQueue, &msg, portMAX_DELAY);
                     }
                     playListItem item;
@@ -248,7 +265,7 @@ void playerTask(void *parameter)
                         log_w("unhandled type");
                     }
 
-                    msg.action = featherMessage::SHOW_STATION;
+                    msg.action = st7789Message::SHOW_STATION;
                     xQueueSend(featherQueue, &msg, portMAX_DELAY);
                 }
 #endif
@@ -281,10 +298,10 @@ void playerTask(void *parameter)
             log_d("Buffer status: %s", audio.bufferStatus());
 
 #ifdef ST7789_TFT
-            featherMessage msg;
+            st7789Message msg;
             msg.value1 = audio.position();
             msg.value2 = audio.size();
-            msg.action = featherMessage::PROGRESS_MESSAGE;
+            msg.action = st7789Message::PROGRESS_MESSAGE;
             xQueueSend(featherQueue, &msg, portMAX_DELAY);
 #endif
 
@@ -363,10 +380,10 @@ void playlistHasEnded()
 
 #ifdef ST7789_TFT
     {
-        featherMessage msg;
-        msg.action = featherMessage::CLEAR_SCREEN;
+        st7789Message msg;
+        msg.action = st7789Message::CLEAR_SCREEN;
         xQueueSend(featherQueue, &msg, portMAX_DELAY);
-        msg.action = featherMessage::SHOW_IPADDRESS;
+        msg.action = st7789Message::SHOW_IPADDRESS;
         xQueueSend(featherQueue, &msg, portMAX_DELAY);
     }
 #endif
@@ -542,7 +559,7 @@ void setup()
     spiMutex = xSemaphoreCreateMutex(); // outside the ST77*9 area so the SPI can continue to lock/unlock for vs1053 when running on another board
 
 #ifdef ST7789_TFT
-    featherQueue = xQueueCreate(5, sizeof(struct featherMessage));
+    featherQueue = xQueueCreate(5, sizeof(struct st7789Message));
 
     if (!featherQueue)
     {
@@ -552,8 +569,8 @@ void setup()
     }
 
     const BaseType_t result1 = xTaskCreatePinnedToCore(
-        featherTask,   /* Function to implement the task */
-        "featherTask", /* Name of the task */
+        st7789Task,   /* Function to implement the task */
+        "st7789Task", /* Name of the task */
         8000,          /* Stack size in BYTES! */
         NULL,          /* Task input parameter */
         4,             /* Priority of the task */
@@ -563,7 +580,7 @@ void setup()
 
     if (result1 != pdPASS)
     {
-        log_e("ERROR! Could not create featherTask. System halted.");
+        log_e("ERROR! Could not create st7789Task. System halted.");
         while (true)
             delay(100);
     }
@@ -805,7 +822,7 @@ void setup()
 
     DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
 
-    playlistHasEnded(); /* before the webserver starts! */
+    playlistHasEnded(); 
 
     server.begin();
     ws.onEvent(websocketEventHandler);
@@ -873,11 +890,10 @@ void audio_showstreamtitle(const char *info)
     if (playList.currentItem() == PLAYLIST_STOPPED)
         return;
 
-    featherMessage msg;
+    st7789Message msg;
     snprintf(msg.str, sizeof(msg.str), "%s", info);
-    msg.action = featherMessage::SHOW_TITLE;
+    msg.action = st7789Message::SHOW_TITLE;
     xQueueSend(featherQueue, &msg, portMAX_DELAY);
-
 #endif
 }
 
