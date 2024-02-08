@@ -99,8 +99,8 @@ void st7789Task(void *parameter)
     const auto LEDC_BITDEPTH = SOC_LEDC_TIMER_BIT_WIDE_NUM;
     const auto LEDC_MAX_PWM_VALUE = (1 << LEDC_BITDEPTH) - 1;
 
-    ledcAttachPin(TFT_BACKLITE, LEDC_CHANNEL);
     ledcSetup(LEDC_CHANNEL, 1220, LEDC_BITDEPTH);
+    ledcAttachPin(TFT_BACKLITE, LEDC_CHANNEL);
     ledcWrite(LEDC_CHANNEL, LEDC_MAX_PWM_VALUE >> (LEDC_BITDEPTH / 3));
 
     // turn on the TFT / I2C power supply
@@ -161,13 +161,13 @@ void st7789Task(void *parameter)
                 tft.fillRect(0, 0, tft.width(), tft.height() - 30, BACKGROUND_COLOR); // TODO: only fill the top part of the screen, leaving the clock area untouched
                 break;
             case st7789Message::SHOW_STATION:
-                tft.setCursor(0, 34);
+                tft.setCursor(5, 34);
                 tft.print(msg.str);
                 break;
             case st7789Message::SHOW_TITLE:
                 snprintf(streamTitle, sizeof(streamTitle), " %s ", msg.str);
                 streamTitleMaxOffset = strlen(streamTitle) * 20 + tft.width();
-                tft.fillRect(0, STREAMTITLE_POS, tft.width(), 21, BACKGROUND_COLOR); // TODO: only fill the top part of the screen, leaving the clock area untouched
+                tft.fillRect(0, STREAMTITLE_POS, tft.width(), 21, BACKGROUND_COLOR);
                 break;
             case st7789Message::SHOW_IPADDRESS:
                 tft.setCursor(0, 65);
