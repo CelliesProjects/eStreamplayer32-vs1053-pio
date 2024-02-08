@@ -75,7 +75,6 @@ static size_t _currentSize = 0;
 static bool _paused = false;
 static bool _codecRunning = false;
 
-
 constexpr const auto NUMBER_OF_PRESETS = sizeof(preset) / sizeof(source);
 
 #ifdef ST7789_TFT
@@ -93,14 +92,26 @@ double map_range(double input, double input_start, double input_end, double outp
 
 void st7789Task(void *parameter)
 {
-    // turn on the TFT back light
-    pinMode(TFT_BACKLITE, OUTPUT);
-    digitalWrite(TFT_BACKLITE, HIGH); // can be set by pwm
+    const auto LEDC_CHANNEL = 0;
+   
+    log_i("SOC max PWM is %i bit 0-%i", SOC_LEDC_TIMER_BIT_WIDE_NUM, (1 << SOC_LEDC_TIMER_BIT_WIDE_NUM) - 1);
+
+    const auto LEDC_BITDEPTH = SOC_LEDC_TIMER_BIT_WIDE_NUM;
+    const auto LEDC_MAX_PWM_VALUE = (1 << LEDC_BITDEPTH) - 1;
+
+    ledcAttachPin(TFT_BACKLITE, LEDC_CHANNEL);
+    ledcSetup(LEDC_CHANNEL, 1220, LEDC_BITDEPTH);
+    ledcWrite(LEDC_CHANNEL, LEDC_MAX_PWM_VALUE >> (LEDC_BITDEPTH / 3));
 
     // turn on the TFT / I2C power supply
     pinMode(TFT_I2C_POWER, OUTPUT);
     digitalWrite(TFT_I2C_POWER, HIGH);
     delay(10);
+
+    static char streamTitle[264];
+    const int16_t STREAMTITLE_POS = 64;
+    static int16_t streamTitleMaxOffset;
+    static int16_t currentStreamTitleOffset = 0;
 
     const auto BACKGROUND_COLOR = ST77XX_YELLOW;
 
@@ -117,7 +128,7 @@ void st7789Task(void *parameter)
 
     vTaskPrioritySet(NULL, tskIDLE_PRIORITY + 1);
 
-    while (!_codecRunning) 
+    while (!_codecRunning)
     {
         delay(100);
     }
@@ -125,7 +136,7 @@ void st7789Task(void *parameter)
     while (1)
     {
         st7789Message msg = {};
-        if (xQueueReceive(featherQueue, &msg, pdTICKS_TO_MS(100)) == pdTRUE)
+        if (xQueueReceive(featherQueue, &msg, pdTICKS_TO_MS(10)) == pdTRUE)
         {
             xSemaphoreTake(spiMutex, portMAX_DELAY);
             switch (msg.action)
@@ -144,6 +155,9 @@ void st7789Task(void *parameter)
                 break;
             }
             case st7789Message::CLEAR_SCREEN:
+                // clearscreen  also clears streamtitle
+                streamTitle[0] = 0;
+                currentStreamTitleOffset = 0;
                 tft.fillRect(0, 0, tft.width(), tft.height() - 30, BACKGROUND_COLOR); // TODO: only fill the top part of the screen, leaving the clock area untouched
                 break;
             case st7789Message::SHOW_STATION:
@@ -151,8 +165,9 @@ void st7789Task(void *parameter)
                 tft.print(msg.str);
                 break;
             case st7789Message::SHOW_TITLE:
-                tft.setCursor(0, 64);
-                tft.print(msg.str);
+                snprintf(streamTitle, sizeof(streamTitle), " %s ", msg.str);
+                streamTitleMaxOffset = strlen(streamTitle) * 20 + tft.width();
+                tft.fillRect(0, STREAMTITLE_POS, tft.width(), 21, BACKGROUND_COLOR); // TODO: only fill the top part of the screen, leaving the clock area untouched
                 break;
             case st7789Message::SHOW_IPADDRESS:
                 tft.setCursor(0, 65);
@@ -171,11 +186,23 @@ void st7789Task(void *parameter)
         {
             char buffer[10];
             strftime(buffer, sizeof(buffer), "%X", localtime(&rawtime));
+
             xSemaphoreTake(spiMutex, portMAX_DELAY);
             tft.setCursor(5, 110);
             tft.printf(buffer);
             xSemaphoreGive(spiMutex);
+
             prevtime = rawtime;
+        }
+
+        if (strlen(streamTitle))
+        {
+            xSemaphoreTake(spiMutex, portMAX_DELAY);
+            tft.setCursor(tft.width() - currentStreamTitleOffset, STREAMTITLE_POS);
+            tft.print(streamTitle);
+            xSemaphoreGive(spiMutex);
+
+            currentStreamTitleOffset += (currentStreamTitleOffset > streamTitleMaxOffset) ? -currentStreamTitleOffset : 2;
         }
     }
 }
@@ -216,7 +243,7 @@ void playerTask(void *parameter)
 
     log_i("Ready to rock!");
 
-   _codecRunning = true;
+    _codecRunning = true;
 
     while (true)
     {
@@ -371,8 +398,8 @@ void startNextItem()
 
 void playlistHasEnded()
 {
-    audio_showstreamtitle("Search API provided by: <a href=\"https://www.radio-browser.info/\" target=\"_blank\"><span style=\"white-space:nowrap;\">radio-browser.info</span></a>");
     playList.setCurrentItem(PLAYLIST_STOPPED);
+    audio_showstreamtitle("Search API provided by: <a href=\"https://www.radio-browser.info/\" target=\"_blank\"><span style=\"white-space:nowrap;\">radio-browser.info</span></a>");
     updateCurrentItemOnClients();
     char versionString[50];
     snprintf(versionString, sizeof(versionString), "%s %s", PROGRAM_NAME, GIT_VERSION);
@@ -567,15 +594,16 @@ void setup()
         while (1)
             delay(100);
     }
+    log_i("starting tft");
 
     const BaseType_t result1 = xTaskCreatePinnedToCore(
         st7789Task,   /* Function to implement the task */
         "st7789Task", /* Name of the task */
-        8000,          /* Stack size in BYTES! */
-        NULL,          /* Task input parameter */
-        4,             /* Priority of the task */
-        NULL,          /* Task handle. */
-        1              /* Core where the task should run */
+        8000,         /* Stack size in BYTES! */
+        NULL,         /* Task input parameter */
+        4,            /* Priority of the task */
+        NULL,         /* Task handle. */
+        1             /* Core where the task should run */
     );
 
     if (result1 != pdPASS)
@@ -822,7 +850,7 @@ void setup()
 
     DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
 
-    playlistHasEnded(); 
+    playlistHasEnded();
 
     server.begin();
     ws.onEvent(websocketEventHandler);
