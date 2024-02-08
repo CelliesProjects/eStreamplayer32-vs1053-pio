@@ -94,7 +94,7 @@ void st7789Task(void *parameter)
 {
     const auto LEDC_CHANNEL = 0;
    
-    log_i("SOC max PWM is %i bit 0-%i", SOC_LEDC_TIMER_BIT_WIDE_NUM, (1 << SOC_LEDC_TIMER_BIT_WIDE_NUM) - 1);
+    log_d("SOC max PWM is %i bit 0-%i", SOC_LEDC_TIMER_BIT_WIDE_NUM, (1 << SOC_LEDC_TIMER_BIT_WIDE_NUM) - 1);
 
     const auto LEDC_BITDEPTH = SOC_LEDC_TIMER_BIT_WIDE_NUM;
     const auto LEDC_MAX_PWM_VALUE = (1 << LEDC_BITDEPTH) - 1;
@@ -165,6 +165,7 @@ void st7789Task(void *parameter)
                 tft.print(msg.str);
                 break;
             case st7789Message::SHOW_TITLE:
+                currentStreamTitleOffset = 0;                        
                 snprintf(streamTitle, sizeof(streamTitle), " %s ", msg.str);
                 streamTitleMaxOffset = strlen(streamTitle) * 20 + tft.width();
                 tft.fillRect(0, STREAMTITLE_POS, tft.width(), 21, BACKGROUND_COLOR);
