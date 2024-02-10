@@ -93,7 +93,7 @@ double map_range(double input, double input_start, double input_end, double outp
 void st7789Task(void *parameter)
 {
     const auto LEDC_CHANNEL = 0;
-   
+
     log_d("SOC max PWM is %i bit 0-%i", SOC_LEDC_TIMER_BIT_WIDE_NUM, (1 << SOC_LEDC_TIMER_BIT_WIDE_NUM) - 1);
 
     const auto LEDC_BITDEPTH = SOC_LEDC_TIMER_BIT_WIDE_NUM;
@@ -126,8 +126,6 @@ void st7789Task(void *parameter)
     tft.printf("%s\n%s\nbooting...", PROGRAM_NAME, GIT_VERSION);
     xSemaphoreGive(spiMutex);
 
-    vTaskPrioritySet(NULL, tskIDLE_PRIORITY + 1);
-
     while (!_codecRunning)
     {
         delay(100);
@@ -136,7 +134,7 @@ void st7789Task(void *parameter)
     while (1)
     {
         st7789Message msg = {};
-        if (xQueueReceive(featherQueue, &msg, pdTICKS_TO_MS(10)) == pdTRUE)
+        if (xQueueReceive(featherQueue, &msg, pdTICKS_TO_MS(15)) == pdTRUE)
         {
             xSemaphoreTake(spiMutex, portMAX_DELAY);
             switch (msg.action)
@@ -155,17 +153,16 @@ void st7789Task(void *parameter)
                 break;
             }
             case st7789Message::CLEAR_SCREEN:
-                // clearscreen  also clears streamtitle
                 streamTitle[0] = 0;
                 currentStreamTitleOffset = 0;
-                tft.fillRect(0, 0, tft.width(), tft.height() - 30, BACKGROUND_COLOR); // TODO: only fill the top part of the screen, leaving the clock area untouched
+                tft.fillRect(0, 0, tft.width(), tft.height() - 30, BACKGROUND_COLOR);
                 break;
             case st7789Message::SHOW_STATION:
                 tft.setCursor(5, 34);
                 tft.print(msg.str);
                 break;
             case st7789Message::SHOW_TITLE:
-                currentStreamTitleOffset = 0;                        
+                currentStreamTitleOffset = 0;
                 snprintf(streamTitle, sizeof(streamTitle), " %s ", msg.str);
                 streamTitleMaxOffset = strlen(streamTitle) * 20 + tft.width();
                 tft.fillRect(0, STREAMTITLE_POS, tft.width(), 21, BACKGROUND_COLOR);
@@ -598,13 +595,13 @@ void setup()
     log_i("starting tft");
 
     const BaseType_t result1 = xTaskCreatePinnedToCore(
-        st7789Task,   /* Function to implement the task */
-        "st7789Task", /* Name of the task */
-        8000,         /* Stack size in BYTES! */
-        NULL,         /* Task input parameter */
-        4,            /* Priority of the task */
-        NULL,         /* Task handle. */
-        1             /* Core where the task should run */
+        st7789Task,           /* Function to implement the task */
+        "st7789Task",         /* Name of the task */
+        8000,                 /* Stack size in BYTES! */
+        NULL,                 /* Task input parameter */
+        tskIDLE_PRIORITY + 1, /* Priority of the task */
+        NULL,                 /* Task handle. */
+        1                     /* Core where the task should run */
     );
 
     if (result1 != pdPASS)
@@ -859,13 +856,13 @@ void setup()
     log_i("Webserver started");
 
     const BaseType_t result = xTaskCreatePinnedToCore(
-        playerTask,            /* Function to implement the task */
-        "playerTask",          /* Name of the task */
-        8000,                  /* Stack size in BYTES! */
-        NULL,                  /* Task input parameter */
-        3 | portPRIVILEGE_BIT, /* Priority of the task */
-        NULL,                  /* Task handle. */
-        1                      /* Core where the task should run */
+        playerTask,                                 /* Function to implement the task */
+        "playerTask",                               /* Name of the task */
+        8000,                                       /* Stack size in BYTES! */
+        NULL,                                       /* Task input parameter */
+        (tskIDLE_PRIORITY + 2) | portPRIVILEGE_BIT, /* Priority of the task */
+        NULL,                                       /* Task handle. */
+        0                                           /* Core where the task should run */
     );
 
     if (result != pdPASS)
