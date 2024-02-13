@@ -41,7 +41,7 @@ struct st7789Message
     size_t value1 = 0;
     size_t value2 = 0;
 };
-static QueueHandle_t featherQueue = NULL;
+static QueueHandle_t st7789Queue = NULL;
 #endif
 
 struct playerMessage
@@ -83,10 +83,12 @@ constexpr const auto NUMBER_OF_PRESETS = sizeof(preset) / sizeof(source);
 //****************************************************************************************
 // https://registry.platformio.org/libraries/adafruit/Adafruit%20ST7735%20and%20ST7789%20Library/examples/graphicstest_feather_esp32s2_tft/graphicstest_feather_esp32s2_tft.ino
 
-double map_range(double input, double input_start, double input_end, double output_start, double output_end)
+double map_range(const double input,
+                 const double input_start, const double input_end,
+                 const double output_start, const double output_end)
 {
-    double input_range = input_end - input_start;
-    double output_range = output_end - output_start;
+    const double input_range = input_end - input_start;
+    const double output_range = output_end - output_start;
     return (input - input_start) * (output_range / input_range) + output_start;
 }
 
@@ -134,7 +136,7 @@ void st7789Task(void *parameter)
     while (1)
     {
         st7789Message msg = {};
-        if (xQueueReceive(featherQueue, &msg, pdTICKS_TO_MS(15)) == pdTRUE)
+        if (xQueueReceive(st7789Queue, &msg, pdTICKS_TO_MS(15)) == pdTRUE)
         {
             xSemaphoreTake(spiMutex, portMAX_DELAY);
             switch (msg.action)
@@ -267,7 +269,7 @@ void playerTask(void *parameter)
                     if (!offset)
                     {
                         msg.action = st7789Message::CLEAR_SCREEN;
-                        xQueueSend(featherQueue, &msg, portMAX_DELAY);
+                        xQueueSend(st7789Queue, &msg, portMAX_DELAY);
                     }
                     playListItem item;
                     playList.get(playList.currentItem(), item);
@@ -291,7 +293,7 @@ void playerTask(void *parameter)
                     }
 
                     msg.action = st7789Message::SHOW_STATION;
-                    xQueueSend(featherQueue, &msg, portMAX_DELAY);
+                    xQueueSend(st7789Queue, &msg, portMAX_DELAY);
                 }
 #endif
 
@@ -327,7 +329,7 @@ void playerTask(void *parameter)
             msg.value1 = audio.position();
             msg.value2 = audio.size();
             msg.action = st7789Message::PROGRESS_MESSAGE;
-            xQueueSend(featherQueue, &msg, portMAX_DELAY);
+            xQueueSend(st7789Queue, &msg, portMAX_DELAY);
 #endif
 
             ws.printfAll("progress\n%i\n%i\n", audio.position(), audio.size());
@@ -407,9 +409,9 @@ void playlistHasEnded()
     {
         st7789Message msg;
         msg.action = st7789Message::CLEAR_SCREEN;
-        xQueueSend(featherQueue, &msg, portMAX_DELAY);
+        xQueueSend(st7789Queue, &msg, portMAX_DELAY);
         msg.action = st7789Message::SHOW_IPADDRESS;
-        xQueueSend(featherQueue, &msg, portMAX_DELAY);
+        xQueueSend(st7789Queue, &msg, portMAX_DELAY);
     }
 #endif
 }
@@ -584,9 +586,9 @@ void setup()
     spiMutex = xSemaphoreCreateMutex(); // outside the ST77*9 area so the SPI can continue to lock/unlock for vs1053 when running on another board
 
 #ifdef ST7789_TFT
-    featherQueue = xQueueCreate(5, sizeof(struct st7789Message));
+    st7789Queue = xQueueCreate(5, sizeof(struct st7789Message));
 
-    if (!featherQueue)
+    if (!st7789Queue)
     {
         log_e("FATAL error! could not create feather queue HALTED!");
         while (1)
@@ -919,7 +921,7 @@ void audio_showstreamtitle(const char *info)
     st7789Message msg;
     snprintf(msg.str, sizeof(msg.str), "%s", info);
     msg.action = st7789Message::SHOW_TITLE;
-    xQueueSend(featherQueue, &msg, portMAX_DELAY);
+    xQueueSend(st7789Queue, &msg, portMAX_DELAY);
 #endif
 }
 
