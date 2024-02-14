@@ -81,7 +81,10 @@ constexpr const auto NUMBER_OF_PRESETS = sizeof(preset) / sizeof(source);
 //****************************************************************************************
 //                                   S T 7 7 8 9 _ T A S K                             *
 //****************************************************************************************
+
 // https://registry.platformio.org/libraries/adafruit/Adafruit%20ST7735%20and%20ST7789%20Library/examples/graphicstest_feather_esp32s2_tft/graphicstest_feather_esp32s2_tft.ino
+
+// https://learn.adafruit.com/adafruit-1-14-240x135-color-tft-breakout/adafruit-gfx-library
 
 double map_range(const double input,
                  const double input_start, const double input_end,
@@ -111,8 +114,6 @@ void st7789Task(void *parameter)
     delay(10);
 
     static char streamTitle[264];
-    const int16_t STREAMTITLE_POS = 64;
-    static int16_t streamTitleMaxOffset;
     static int16_t currentStreamTitleOffset = 0;
 
     const auto BACKGROUND_COLOR = ST77XX_YELLOW;
@@ -121,9 +122,11 @@ void st7789Task(void *parameter)
     Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
     tft.init(135, 240, SPI_MODE0);
     tft.setRotation(1);
+    tft.setFont(&FreeSansBold9pt7b);
     tft.fillScreen(BACKGROUND_COLOR);
     tft.setTextColor(ST77XX_BLACK, BACKGROUND_COLOR);
-    tft.setTextSize(3);
+    tft.setTextSize(1);
+    tft.setCursor(2,14);
     tft.setTextWrap(false);
     tft.printf("%s\n%s\nbooting...", PROGRAM_NAME, GIT_VERSION);
     xSemaphoreGive(spiMutex);
@@ -132,6 +135,10 @@ void st7789Task(void *parameter)
     {
         delay(100);
     }
+
+    GFXcanvas16 canvas(240, 20);
+    int16_t strX, strY;
+    uint16_t strWidth, strHeight;
 
     while (1)
     {
@@ -148,7 +155,7 @@ void st7789Task(void *parameter)
             case st7789Message::PROGRESS_MESSAGE:
             {
                 constexpr const int HEIGHT_IN_PIXELS = 20;
-                constexpr const int HEIGHT_OFFSET = 0;
+                constexpr const int HEIGHT_OFFSET = 64;
                 const int16_t FILLED_AREA = map_range(msg.value1, 0, msg.value2, 0, tft.width() + 1);
                 tft.fillRect(0, HEIGHT_OFFSET, FILLED_AREA, HEIGHT_IN_PIXELS, ST77XX_BLUE);
                 tft.fillRect(FILLED_AREA, HEIGHT_OFFSET, tft.width() - FILLED_AREA, HEIGHT_IN_PIXELS, ST77XX_WHITE);
@@ -160,21 +167,26 @@ void st7789Task(void *parameter)
                 tft.fillRect(0, 0, tft.width(), tft.height() - 30, BACKGROUND_COLOR);
                 break;
             case st7789Message::SHOW_STATION:
+                tft.setTextSize(1);
+                tft.setTextColor(ST77XX_BLACK);
+                tft.setFont(&FreeSansBold9pt7b);
                 tft.setCursor(5, 34);
                 tft.print(msg.str);
                 break;
             case st7789Message::SHOW_TITLE:
                 currentStreamTitleOffset = 0;
-                snprintf(streamTitle, sizeof(streamTitle), " %s ", msg.str);
-                streamTitleMaxOffset = strlen(streamTitle) * 20 + tft.width();
-                tft.fillRect(0, STREAMTITLE_POS, tft.width(), 21, BACKGROUND_COLOR);
+                snprintf(streamTitle, sizeof(streamTitle), "%s", msg.str);
+                tft.setTextSize(1);
+                tft.setFont(&FreeSansBold9pt7b);
+                tft.getTextBounds(streamTitle, 0, 0, &strX, &strY, &strWidth, &strHeight);
+                tft.setFont();
                 break;
             case st7789Message::SHOW_IPADDRESS:
                 tft.setCursor(0, 65);
                 tft.print(WiFi.localIP().toString().c_str());
                 break;
             default:
-                log_w("unhandled feather msg type");
+                log_w("unhandled st7789 msg type");
             }
             xSemaphoreGive(spiMutex);
         }
@@ -188,21 +200,31 @@ void st7789Task(void *parameter)
             strftime(buffer, sizeof(buffer), "%X", localtime(&rawtime));
 
             xSemaphoreTake(spiMutex, portMAX_DELAY);
+            tft.setTextSize(3);
+            tft.setFont();
             tft.setCursor(5, 110);
+            tft.setTextColor(ST77XX_BLACK, ST77XX_YELLOW);
             tft.printf(buffer);
             xSemaphoreGive(spiMutex);
 
             prevtime = rawtime;
         }
 
-        if (strlen(streamTitle))
+        if (streamTitle[0])
         {
+            const auto Y_POSITION = 64;
+
             xSemaphoreTake(spiMutex, portMAX_DELAY);
-            tft.setCursor(tft.width() - currentStreamTitleOffset, STREAMTITLE_POS);
-            tft.print(streamTitle);
+            canvas.fillScreen(0);
+            canvas.setCursor(canvas.width() - currentStreamTitleOffset, canvas.height() - 6);
+            canvas.setFont(&FreeSansBold9pt7b);
+            canvas.setTextSize(1);
+            canvas.setTextWrap(false);
+            canvas.print(streamTitle);
+            tft.drawRGBBitmap(0, Y_POSITION, canvas.getBuffer(), canvas.width(), canvas.height());
             xSemaphoreGive(spiMutex);
 
-            currentStreamTitleOffset += (currentStreamTitleOffset > streamTitleMaxOffset) ? -currentStreamTitleOffset : 2;
+            currentStreamTitleOffset = (currentStreamTitleOffset < (canvas.width() + strWidth)) ? currentStreamTitleOffset + 1 : 0;
         }
     }
 }
