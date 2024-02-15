@@ -24,6 +24,7 @@ String percentEncode(const char *plaintext);
 #include <Adafruit_GFX.h>    // Core graphics library
 #include <Adafruit_ST7789.h> // Hardware-specific library for ST7789
 #include <Fonts/FreeSansBold9pt7b.h>
+#include <Fonts/FreeSansBold18pt7b.h>
 
 struct st7789Message
 {
@@ -126,7 +127,7 @@ void st7789Task(void *parameter)
     tft.fillScreen(BACKGROUND_COLOR);
     tft.setTextColor(ST77XX_BLACK, BACKGROUND_COLOR);
     tft.setTextSize(1);
-    tft.setCursor(2,14);
+    tft.setCursor(2, 14);
     tft.setTextWrap(false);
     tft.printf("%s\n%s\nbooting...", PROGRAM_NAME, GIT_VERSION);
     xSemaphoreGive(spiMutex);
@@ -143,13 +144,15 @@ void st7789Task(void *parameter)
     while (1)
     {
         st7789Message msg = {};
-        if (xQueueReceive(st7789Queue, &msg, pdTICKS_TO_MS(15)) == pdTRUE)
+        if (xQueueReceive(st7789Queue, &msg, pdTICKS_TO_MS(25)) == pdTRUE)
         {
             xSemaphoreTake(spiMutex, portMAX_DELAY);
             switch (msg.action)
             {
             case st7789Message::SYSTEM_MESSAGE:
-                tft.setCursor(0, 0);
+                tft.setFont();
+                tft.setTextSize(1);
+                tft.setCursor(1, 1);
                 tft.print(msg.str);
                 break;
             case st7789Message::PROGRESS_MESSAGE:
@@ -164,7 +167,7 @@ void st7789Task(void *parameter)
             case st7789Message::CLEAR_SCREEN:
                 streamTitle[0] = 0;
                 currentStreamTitleOffset = 0;
-                tft.fillRect(0, 0, tft.width(), tft.height() - 30, BACKGROUND_COLOR);
+                tft.fillScreen(BACKGROUND_COLOR);
                 break;
             case st7789Message::SHOW_STATION:
                 tft.setTextSize(1);
@@ -182,45 +185,37 @@ void st7789Task(void *parameter)
                 tft.setFont();
                 break;
             case st7789Message::SHOW_IPADDRESS:
-                tft.setCursor(0, 65);
+            {
+                tft.setFont(&FreeSansBold18pt7b);
+                tft.setTextSize(1);
+                tft.setTextColor(ST77XX_BLUE);
+                int16_t xpos;
+                int16_t ypos;
+                uint16_t height;
+                uint16_t width;
+                tft.getTextBounds(WiFi.localIP().toString().c_str(), 0, 0, &xpos, &ypos, &width, &height);
+                tft.setCursor((tft.width() / 2) - (width / 2), 65);
                 tft.print(WiFi.localIP().toString().c_str());
                 break;
+            }
             default:
                 log_w("unhandled st7789 msg type");
             }
             xSemaphoreGive(spiMutex);
         }
-
-        static time_t prevtime = 0;
-        static time_t rawtime;
-        time(&rawtime);
-        if (rawtime != prevtime)
-        {
-            char buffer[10];
-            strftime(buffer, sizeof(buffer), "%X", localtime(&rawtime));
-
-            xSemaphoreTake(spiMutex, portMAX_DELAY);
-            tft.setTextSize(3);
-            tft.setFont();
-            tft.setCursor(5, 110);
-            tft.setTextColor(ST77XX_BLACK, ST77XX_YELLOW);
-            tft.printf(buffer);
-            xSemaphoreGive(spiMutex);
-
-            prevtime = rawtime;
-        }
+        // https://learn.adafruit.com/adafruit-gfx-graphics-library
 
         if (streamTitle[0])
         {
             const auto Y_POSITION = 64;
 
-            xSemaphoreTake(spiMutex, portMAX_DELAY);
             canvas.fillScreen(0);
             canvas.setCursor(canvas.width() - currentStreamTitleOffset, canvas.height() - 6);
             canvas.setFont(&FreeSansBold9pt7b);
             canvas.setTextSize(1);
             canvas.setTextWrap(false);
             canvas.print(streamTitle);
+            xSemaphoreTake(spiMutex, portMAX_DELAY);
             tft.drawRGBBitmap(0, Y_POSITION, canvas.getBuffer(), canvas.width(), canvas.height());
             xSemaphoreGive(spiMutex);
 
