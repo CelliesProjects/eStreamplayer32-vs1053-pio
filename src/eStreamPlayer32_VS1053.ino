@@ -31,7 +31,7 @@ struct st7789Message
     enum action
     {
         SYSTEM_MESSAGE,
-        PROGRESS_MESSAGE,
+        PROGRESS_BAR,
         CLEAR_SCREEN,
         SHOW_STATION,
         SHOW_TITLE,
@@ -98,16 +98,13 @@ double map_range(const double input,
 
 void st7789Task(void *parameter)
 {
-    const auto LEDC_CHANNEL = 0;
+    static const auto BACKGROUND_COLOR = ST77XX_YELLOW;
+    static const auto LEDC_CHANNEL = 0;
+    static const auto LEDC_MAX_PWM_VALUE = (1 << SOC_LEDC_TIMER_BIT_WIDE_NUM) - 1;
 
-    log_d("SOC max PWM is %i bit 0-%i", SOC_LEDC_TIMER_BIT_WIDE_NUM, (1 << SOC_LEDC_TIMER_BIT_WIDE_NUM) - 1);
-
-    const auto LEDC_BITDEPTH = SOC_LEDC_TIMER_BIT_WIDE_NUM;
-    const auto LEDC_MAX_PWM_VALUE = (1 << LEDC_BITDEPTH) - 1;
-
-    ledcSetup(LEDC_CHANNEL, 1220, LEDC_BITDEPTH);
+    ledcSetup(LEDC_CHANNEL, 1220, SOC_LEDC_TIMER_BIT_WIDE_NUM);
     ledcAttachPin(TFT_BACKLITE, LEDC_CHANNEL);
-    ledcWrite(LEDC_CHANNEL, LEDC_MAX_PWM_VALUE >> (LEDC_BITDEPTH / 3));
+    ledcWrite(LEDC_CHANNEL, LEDC_MAX_PWM_VALUE >> (SOC_LEDC_TIMER_BIT_WIDE_NUM / 3));
 
     // turn on the TFT / I2C power supply
     pinMode(TFT_I2C_POWER, OUTPUT);
@@ -115,12 +112,10 @@ void st7789Task(void *parameter)
     delay(10);
 
     static char streamTitle[264];
-    static int16_t currentStreamTitleOffset = 0;
-
-    const auto BACKGROUND_COLOR = ST77XX_YELLOW;
+    static int16_t streamTitleOffset = 0;
 
     xSemaphoreTake(spiMutex, portMAX_DELAY);
-    Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
+    static Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
     tft.init(135, 240, SPI_MODE0);
     tft.setRotation(1);
     tft.setFont(&FreeSansBold9pt7b);
@@ -137,13 +132,14 @@ void st7789Task(void *parameter)
         delay(100);
     }
 
-    GFXcanvas16 canvas(240, 20);
-    int16_t strX, strY;
-    uint16_t strWidth, strHeight;
+    static GFXcanvas16 canvas(240, 20);
+    static int16_t strX, strY;
+    static uint16_t strWidth, strHeight;
+    static bool streamTitleIsEmpty;
 
     while (1)
     {
-        st7789Message msg = {};
+        static st7789Message msg = {};
         if (xQueueReceive(st7789Queue, &msg, pdTICKS_TO_MS(25)) == pdTRUE)
         {
             xSemaphoreTake(spiMutex, portMAX_DELAY);
@@ -155,18 +151,18 @@ void st7789Task(void *parameter)
                 tft.setCursor(1, 1);
                 tft.print(msg.str);
                 break;
-            case st7789Message::PROGRESS_MESSAGE:
+            case st7789Message::PROGRESS_BAR:
             {
-                constexpr const int HEIGHT_IN_PIXELS = 20;
-                constexpr const int HEIGHT_OFFSET = 64;
-                const int16_t FILLED_AREA = map_range(msg.value1, 0, msg.value2, 0, tft.width() + 1);
+                static constexpr const int HEIGHT_IN_PIXELS = 20;
+                static constexpr const int HEIGHT_OFFSET = 64;
+                static const int16_t FILLED_AREA = map_range(msg.value1, 0, msg.value2, 0, tft.width() + 1);
                 tft.fillRect(0, HEIGHT_OFFSET, FILLED_AREA, HEIGHT_IN_PIXELS, ST77XX_BLUE);
                 tft.fillRect(FILLED_AREA, HEIGHT_OFFSET, tft.width() - FILLED_AREA, HEIGHT_IN_PIXELS, ST77XX_WHITE);
                 break;
             }
             case st7789Message::CLEAR_SCREEN:
                 streamTitle[0] = 0;
-                currentStreamTitleOffset = 0;
+                streamTitleOffset = 0;
                 tft.fillScreen(BACKGROUND_COLOR);
                 break;
             case st7789Message::SHOW_STATION:
@@ -177,22 +173,22 @@ void st7789Task(void *parameter)
                 tft.print(msg.str);
                 break;
             case st7789Message::SHOW_TITLE:
-                currentStreamTitleOffset = 0;
+                streamTitleOffset = 0;
+                streamTitleIsEmpty = msg.str[0] ? false : true;
                 snprintf(streamTitle, sizeof(streamTitle), "%s", msg.str);
                 tft.setTextSize(1);
                 tft.setFont(&FreeSansBold9pt7b);
                 tft.getTextBounds(streamTitle, 0, 0, &strX, &strY, &strWidth, &strHeight);
-                tft.setFont();
                 break;
             case st7789Message::SHOW_IPADDRESS:
             {
                 tft.setFont(&FreeSansBold18pt7b);
                 tft.setTextSize(1);
                 tft.setTextColor(ST77XX_BLUE);
-                int16_t xpos;
-                int16_t ypos;
-                uint16_t height;
-                uint16_t width;
+                static int16_t xpos;
+                static int16_t ypos;
+                static uint16_t height;
+                static uint16_t width;
                 tft.getTextBounds(WiFi.localIP().toString().c_str(), 0, 0, &xpos, &ypos, &width, &height);
                 tft.setCursor((tft.width() / 2) - (width / 2), 65);
                 tft.print(WiFi.localIP().toString().c_str());
@@ -205,21 +201,23 @@ void st7789Task(void *parameter)
         }
         // https://learn.adafruit.com/adafruit-gfx-graphics-library
 
-        if (streamTitle[0])
+        if (streamTitle[0] || streamTitleIsEmpty)
         {
-            const auto Y_POSITION = 64;
+            static const auto Y_POSITION = 64;
 
             canvas.fillScreen(0);
-            canvas.setCursor(canvas.width() - currentStreamTitleOffset, canvas.height() - 6);
+            canvas.setCursor(canvas.width() - streamTitleOffset, canvas.height() - 6);
             canvas.setFont(&FreeSansBold9pt7b);
             canvas.setTextSize(1);
             canvas.setTextWrap(false);
             canvas.print(streamTitle);
+
             xSemaphoreTake(spiMutex, portMAX_DELAY);
             tft.drawRGBBitmap(0, Y_POSITION, canvas.getBuffer(), canvas.width(), canvas.height());
             xSemaphoreGive(spiMutex);
 
-            currentStreamTitleOffset = (currentStreamTitleOffset < (canvas.width() + strWidth)) ? currentStreamTitleOffset + 1 : 0;
+            streamTitleOffset = (streamTitleOffset < (canvas.width() + strWidth)) ? streamTitleOffset + 2 : 0;
+            streamTitleIsEmpty = false;
         }
     }
 }
@@ -345,7 +343,7 @@ void playerTask(void *parameter)
             st7789Message msg;
             msg.value1 = audio.position();
             msg.value2 = audio.size();
-            msg.action = st7789Message::PROGRESS_MESSAGE;
+            msg.action = st7789Message::PROGRESS_BAR;
             xQueueSend(st7789Queue, &msg, portMAX_DELAY);
 #endif
 
