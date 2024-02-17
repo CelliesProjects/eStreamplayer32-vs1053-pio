@@ -83,10 +83,6 @@ constexpr const auto NUMBER_OF_PRESETS = sizeof(preset) / sizeof(source);
 //                                   S T 7 7 8 9 _ T A S K                             *
 //****************************************************************************************
 
-// https://registry.platformio.org/libraries/adafruit/Adafruit%20ST7735%20and%20ST7789%20Library/examples/graphicstest_feather_esp32s2_tft/graphicstest_feather_esp32s2_tft.ino
-
-// https://learn.adafruit.com/adafruit-1-14-240x135-color-tft-breakout/adafruit-gfx-library
-
 double map_range(const double input,
                  const double input_start, const double input_end,
                  const double output_start, const double output_end)
@@ -98,9 +94,9 @@ double map_range(const double input,
 
 void st7789Task(void *parameter)
 {
-    static const auto BACKGROUND_COLOR = ST77XX_YELLOW;
-    static const auto LEDC_CHANNEL = 0;
-    static const auto LEDC_MAX_PWM_VALUE = (1 << SOC_LEDC_TIMER_BIT_WIDE_NUM) - 1;
+    const auto BACKGROUND_COLOR = ST77XX_YELLOW;
+    const auto LEDC_CHANNEL = 0;
+    const auto LEDC_MAX_PWM_VALUE = (1 << SOC_LEDC_TIMER_BIT_WIDE_NUM) - 1;
 
     ledcSetup(LEDC_CHANNEL, 1220, SOC_LEDC_TIMER_BIT_WIDE_NUM);
     ledcAttachPin(TFT_BACKLITE, LEDC_CHANNEL);
@@ -110,9 +106,6 @@ void st7789Task(void *parameter)
     pinMode(TFT_I2C_POWER, OUTPUT);
     digitalWrite(TFT_I2C_POWER, HIGH);
     delay(10);
-
-    static char streamTitle[264];
-    static int16_t streamTitleOffset = 0;
 
     xSemaphoreTake(spiMutex, portMAX_DELAY);
     static Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
@@ -135,7 +128,10 @@ void st7789Task(void *parameter)
     static GFXcanvas16 canvas(240, 20);
     static int16_t strX, strY;
     static uint16_t strWidth, strHeight;
+
+    static char streamTitle[264];    
     static bool streamTitleIsEmpty;
+    static int16_t streamTitleOffset = 0;
 
     while (1)
     {
@@ -153,9 +149,9 @@ void st7789Task(void *parameter)
                 break;
             case st7789Message::PROGRESS_BAR:
             {
-                static constexpr const int HEIGHT_IN_PIXELS = 20;
-                static constexpr const int HEIGHT_OFFSET = 64;
-                static const int16_t FILLED_AREA = map_range(msg.value1, 0, msg.value2, 0, tft.width() + 1);
+                const int HEIGHT_IN_PIXELS = 20;
+                const int HEIGHT_OFFSET = 64;
+                int16_t FILLED_AREA = map_range(msg.value1, 0, msg.value2, 0, tft.width() + 1);
                 tft.fillRect(0, HEIGHT_OFFSET, FILLED_AREA, HEIGHT_IN_PIXELS, ST77XX_BLUE);
                 tft.fillRect(FILLED_AREA, HEIGHT_OFFSET, tft.width() - FILLED_AREA, HEIGHT_IN_PIXELS, ST77XX_WHITE);
                 break;
@@ -199,11 +195,10 @@ void st7789Task(void *parameter)
             }
             xSemaphoreGive(spiMutex);
         }
-        // https://learn.adafruit.com/adafruit-gfx-graphics-library
 
         if (streamTitle[0] || streamTitleIsEmpty)
         {
-            static const auto Y_POSITION = 64;
+            const auto Y_POSITION = 64;
 
             canvas.fillScreen(0);
             canvas.setCursor(canvas.width() - streamTitleOffset, canvas.height() - 6);
