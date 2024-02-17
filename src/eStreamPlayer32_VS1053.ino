@@ -11,21 +11,56 @@
 #include "index_htm_gz.h"
 #include "icons.h"
 
+const char PROGRAM_NAME[] = "eStreamPlayer";
+
+void startNextItem();
+void playlistHasEnded();
+void websocketEventHandler(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len);
+void handleSingleFrame(AsyncWebSocketClient *client, uint8_t *data, size_t len);
+void handleMultiFrame(AsyncWebSocketClient *client, uint8_t *data, size_t len, AwsFrameInfo *info);
+String percentEncode(const char *plaintext);
+
+#ifdef ST7789_TFT
+#include <Adafruit_GFX.h>    // Core graphics library
+#include <Adafruit_ST7789.h> // Hardware-specific library for ST7789
+#include <Fonts/FreeSansBold9pt7b.h>
+#include <Fonts/FreeSansBold18pt7b.h>
+
+struct st7789Message
+{
+    enum action
+    {
+        SYSTEM_MESSAGE,
+        PROGRESS_BAR,
+        CLEAR_SCREEN,
+        SHOW_STATION,
+        SHOW_TITLE,
+        SHOW_IPADDRESS
+    };
+    action action;
+    char str[256];
+    size_t value1 = 0;
+    size_t value2 = 0;
+};
+static QueueHandle_t st7789Queue = NULL;
+#endif
+
 struct playerMessage
 {
-    enum playerAction
+    enum action
     {
         SET_VOLUME,
         CONNECTTOHOST,
         STOPSONG,
         SETTONE
     };
-    playerAction action;
+    action action;
     char url[PLAYLIST_MAX_URL_LENGTH];
     size_t value = 0;
 };
-
 static QueueHandle_t playerQueue = NULL;
+
+static SemaphoreHandle_t spiMutex;
 static playList_t playList;
 static AsyncWebServer server(80);
 static AsyncWebSocket ws("/ws");
@@ -39,9 +74,149 @@ static auto _playerVolume = VS1053_INITIALVOLUME;
 static size_t _savedPosition = 0;
 static size_t _currentSize = 0;
 static bool _paused = false;
+static bool _codecRunning = false;
 
 constexpr const auto NUMBER_OF_PRESETS = sizeof(preset) / sizeof(source);
 
+#ifdef ST7789_TFT
+//****************************************************************************************
+//                                   S T 7 7 8 9 _ T A S K                             *
+//****************************************************************************************
+
+double map_range(const double input,
+                 const double input_start, const double input_end,
+                 const double output_start, const double output_end)
+{
+    const double input_range = input_end - input_start;
+    const double output_range = output_end - output_start;
+    return (input - input_start) * (output_range / input_range) + output_start;
+}
+
+void st7789Task(void *parameter)
+{
+    const auto BACKGROUND_COLOR = ST77XX_YELLOW;
+    const auto LEDC_CHANNEL = 0;
+    const auto LEDC_MAX_PWM_VALUE = (1 << SOC_LEDC_TIMER_BIT_WIDE_NUM) - 1;
+
+    ledcSetup(LEDC_CHANNEL, 1220, SOC_LEDC_TIMER_BIT_WIDE_NUM);
+    ledcAttachPin(TFT_BACKLITE, LEDC_CHANNEL);
+    ledcWrite(LEDC_CHANNEL, LEDC_MAX_PWM_VALUE >> (SOC_LEDC_TIMER_BIT_WIDE_NUM / 3));
+
+    // turn on the TFT / I2C power supply
+    pinMode(TFT_I2C_POWER, OUTPUT);
+    digitalWrite(TFT_I2C_POWER, HIGH);
+    delay(10);
+
+    xSemaphoreTake(spiMutex, portMAX_DELAY);
+    static Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
+    tft.init(135, 240, SPI_MODE0);
+    tft.setRotation(1);
+    tft.setFont(&FreeSansBold9pt7b);
+    tft.fillScreen(BACKGROUND_COLOR);
+    tft.setTextColor(ST77XX_BLACK, BACKGROUND_COLOR);
+    tft.setTextSize(1);
+    tft.setCursor(2, 14);
+    tft.setTextWrap(false);
+    tft.printf("%s\n%s\nbooting...", PROGRAM_NAME, GIT_VERSION);
+    xSemaphoreGive(spiMutex);
+
+    while (!_codecRunning)
+    {
+        delay(100);
+    }
+
+    static GFXcanvas16 canvas(240, 20);
+    static int16_t strX, strY;
+    static uint16_t strWidth, strHeight;
+
+    static char streamTitle[264];    
+    static bool streamTitleIsEmpty;
+    static int16_t streamTitleOffset = 0;
+
+    while (1)
+    {
+        static st7789Message msg = {};
+        if (xQueueReceive(st7789Queue, &msg, pdTICKS_TO_MS(25)) == pdTRUE)
+        {
+            xSemaphoreTake(spiMutex, portMAX_DELAY);
+            switch (msg.action)
+            {
+            case st7789Message::SYSTEM_MESSAGE:
+                tft.setFont();
+                tft.setTextSize(1);
+                tft.setCursor(1, 1);
+                tft.print(msg.str);
+                break;
+            case st7789Message::PROGRESS_BAR:
+            {
+                const int HEIGHT_IN_PIXELS = 20;
+                const int HEIGHT_OFFSET = 64;
+                int16_t FILLED_AREA = map_range(msg.value1, 0, msg.value2, 0, tft.width() + 1);
+                tft.fillRect(0, HEIGHT_OFFSET, FILLED_AREA, HEIGHT_IN_PIXELS, ST77XX_BLUE);
+                tft.fillRect(FILLED_AREA, HEIGHT_OFFSET, tft.width() - FILLED_AREA, HEIGHT_IN_PIXELS, ST77XX_WHITE);
+                break;
+            }
+            case st7789Message::CLEAR_SCREEN:
+                streamTitle[0] = 0;
+                streamTitleOffset = 0;
+                tft.fillScreen(BACKGROUND_COLOR);
+                break;
+            case st7789Message::SHOW_STATION:
+                tft.setTextSize(1);
+                tft.setTextColor(ST77XX_BLACK);
+                tft.setFont(&FreeSansBold9pt7b);
+                tft.setCursor(5, 34);
+                tft.print(msg.str);
+                break;
+            case st7789Message::SHOW_TITLE:
+                streamTitleOffset = 0;
+                streamTitleIsEmpty = msg.str[0] ? false : true;
+                snprintf(streamTitle, sizeof(streamTitle), "%s", msg.str);
+                tft.setTextSize(1);
+                tft.setFont(&FreeSansBold9pt7b);
+                tft.getTextBounds(streamTitle, 0, 0, &strX, &strY, &strWidth, &strHeight);
+                break;
+            case st7789Message::SHOW_IPADDRESS:
+            {
+                tft.setFont(&FreeSansBold18pt7b);
+                tft.setTextSize(1);
+                tft.setTextColor(ST77XX_BLUE);
+                static int16_t xpos;
+                static int16_t ypos;
+                static uint16_t height;
+                static uint16_t width;
+                tft.getTextBounds(WiFi.localIP().toString().c_str(), 0, 0, &xpos, &ypos, &width, &height);
+                tft.setCursor((tft.width() / 2) - (width / 2), 65);
+                tft.print(WiFi.localIP().toString().c_str());
+                break;
+            }
+            default:
+                log_w("unhandled st7789 msg type");
+            }
+            xSemaphoreGive(spiMutex);
+        }
+
+        if (streamTitle[0] || streamTitleIsEmpty)
+        {
+            const auto Y_POSITION = 64;
+
+            canvas.fillScreen(0);
+            canvas.setCursor(canvas.width() - streamTitleOffset, canvas.height() - 6);
+            canvas.setFont(&FreeSansBold9pt7b);
+            canvas.setTextSize(1);
+            canvas.setTextWrap(false);
+            canvas.print(streamTitle);
+
+            xSemaphoreTake(spiMutex, portMAX_DELAY);
+            tft.drawRGBBitmap(0, Y_POSITION, canvas.getBuffer(), canvas.width(), canvas.height());
+            xSemaphoreGive(spiMutex);
+
+            streamTitleOffset = (streamTitleOffset < (canvas.width() + strWidth)) ? streamTitleOffset + 2 : 0;
+            streamTitleIsEmpty = false;
+        }
+    }
+}
+#endif
 //****************************************************************************************
 //                                   P L A Y E R _ T A S K                               *
 //****************************************************************************************
@@ -49,9 +224,6 @@ constexpr const auto NUMBER_OF_PRESETS = sizeof(preset) / sizeof(source);
 void playerTask(void *parameter)
 {
     log_i("Starting VS1053 codec...");
-
-    SPI.setHwCs(true);
-    SPI.begin(SPI_CLK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN);
 
 #if defined(VS1053_RST_PIN)
 
@@ -65,12 +237,14 @@ void playerTask(void *parameter)
 
     static ESP32_VS1053_Stream audio;
 
+    xSemaphoreTake(spiMutex, portMAX_DELAY);
     if (!audio.startDecoder(VS1053_CS_PIN, VS1053_DCS_PIN, VS1053_DREQ_PIN) || !audio.isChipConnected())
     {
         log_e("VS1053 board could not init\nSystem halted");
         while (true)
             delay(100);
     }
+    xSemaphoreGive(spiMutex);
 
     log_d("Heap: %d", ESP.getHeapSize());
     log_d("Free: %d", ESP.getFreeHeap());
@@ -79,12 +253,14 @@ void playerTask(void *parameter)
 
     log_i("Ready to rock!");
 
+    _codecRunning = true;
+
     while (true)
     {
         playerMessage msg;
-        if (xQueueReceive(playerQueue, &msg, pdMS_TO_TICKS(5)) == pdPASS)
+        if (xQueueReceive(playerQueue, &msg, pdMS_TO_TICKS(5)) == pdTRUE)
         {
-            log_d("Minimum free stack bytes: %i", uxTaskGetStackHighWaterMark(NULL));
+            xSemaphoreTake(spiMutex, portMAX_DELAY);
             switch (msg.action)
             {
             case playerMessage::SET_VOLUME:
@@ -94,8 +270,50 @@ void playerTask(void *parameter)
                 audio.stopSong();
                 _paused = false;
                 ws.textAll("status\nplaying\n");
+
+#ifdef ST7789_TFT
+                {
+                    auto offset = msg.value;
+
+                    st7789Message msg;
+                    if (!offset)
+                    {
+                        msg.action = st7789Message::CLEAR_SCREEN;
+                        xQueueSend(st7789Queue, &msg, portMAX_DELAY);
+                    }
+                    playListItem item;
+                    playList.get(playList.currentItem(), item);
+
+                    switch (item.type)
+                    {
+                    case HTTP_FILE:
+                        snprintf(msg.str, sizeof(msg.str), "%s", item.url.substring(item.url.lastIndexOf("/") + 1).c_str());
+                        break;
+                    case HTTP_FOUND:
+                        snprintf(msg.str, sizeof(msg.str), "%s", item.name.c_str());
+                        break;
+                    case HTTP_FAVORITE:
+                        snprintf(msg.str, sizeof(msg.str), "%s", item.name.c_str());
+                        break;
+                    case HTTP_PRESET:
+                        snprintf(msg.str, sizeof(msg.str), "%s", preset[item.index].name.c_str());
+                        break;
+                    default:
+                        log_w("unhandled type");
+                    }
+
+                    msg.action = st7789Message::SHOW_STATION;
+                    xQueueSend(st7789Queue, &msg, portMAX_DELAY);
+                }
+#endif
+
+                xSemaphoreGive(spiMutex); // connecttohost() does not touch the spi bus
+
                 if (!audio.connecttohost(msg.url, LIBRARY_USER, LIBRARY_PWD, msg.value))
                     startNextItem();
+
+                xSemaphoreTake(spiMutex, portMAX_DELAY);
+
                 _currentSize = audio.size();
                 _savedPosition = audio.position();
                 break;
@@ -105,21 +323,32 @@ void playerTask(void *parameter)
             default:
                 log_e("error: unhandled audio action: %i", msg.action);
             }
+            xSemaphoreGive(spiMutex);
         }
 
         constexpr const auto MAX_UPDATE_FREQ_HZ = 3;
         constexpr const auto UPDATE_INTERVAL_MS = 1000 / MAX_UPDATE_FREQ_HZ;
         static unsigned long savedTime = millis();
 
-        if (ws.count() && audio.size() && millis() - savedTime > UPDATE_INTERVAL_MS && audio.position() != _savedPosition)
+        if (audio.size() && millis() - savedTime > UPDATE_INTERVAL_MS && audio.position() != _savedPosition)
         {
             log_d("Buffer status: %s", audio.bufferStatus());
+
+#ifdef ST7789_TFT
+            st7789Message msg;
+            msg.value1 = audio.position();
+            msg.value2 = audio.size();
+            msg.action = st7789Message::PROGRESS_BAR;
+            xQueueSend(st7789Queue, &msg, portMAX_DELAY);
+#endif
 
             ws.printfAll("progress\n%i\n%i\n", audio.position(), audio.size());
             savedTime = millis();
             _savedPosition = audio.position();
         }
+        xSemaphoreTake(spiMutex, portMAX_DELAY);
         audio.loop();
+        xSemaphoreGive(spiMutex);
     }
 }
 
@@ -149,22 +378,13 @@ void startItem(uint8_t const index, size_t offset = 0)
     {
     case HTTP_FILE:
     {
-        {
-            char name[item.url.length() - item.url.lastIndexOf('/')];
-            auto pos = item.url.lastIndexOf('/') + 1;
-            auto cnt = 0;
-            while (pos < item.url.length())
-                name[cnt++] = item.url.charAt(pos++);
-            name[cnt] = 0;
-            audio_showstation(name);
-        }
-        char path[item.url.lastIndexOf('/') + 1];
-        auto pos = 0;
+        char name[item.url.length() - item.url.lastIndexOf('/')];
+        auto pos = item.url.lastIndexOf('/') + 1;
         auto cnt = 0;
-        while (pos < item.url.lastIndexOf('/'))
-            path[cnt++] = item.url.charAt(pos++);
-        path[pos] = 0;
-        audio_showstreamtitle(path);
+        while (pos < item.url.length())
+            name[cnt++] = item.url.charAt(pos++);
+        name[cnt] = 0;
+        audio_showstation(name);
     }
     break;
     case HTTP_PRESET:
@@ -181,21 +401,29 @@ void startNextItem()
     {
         playList.setCurrentItem(playList.currentItem() + 1);
         startItem(playList.currentItem());
+        return;
     }
-    else
-    {
-        playlistHasEnded();
-    }
+    playlistHasEnded();
 }
 
 void playlistHasEnded()
 {
-    audio_showstreamtitle("Search API provided by: <a href=\"https://www.radio-browser.info/\" target=\"_blank\"><span style=\"white-space:nowrap;\">radio-browser.info</span></a>");
     playList.setCurrentItem(PLAYLIST_STOPPED);
+    audio_showstreamtitle("Search API provided by: <a href=\"https://www.radio-browser.info/\" target=\"_blank\"><span style=\"white-space:nowrap;\">radio-browser.info</span></a>");
     updateCurrentItemOnClients();
     char versionString[50];
-    snprintf(versionString, sizeof(versionString), "eStreamPlayer %s", GIT_VERSION);
+    snprintf(versionString, sizeof(versionString), "%s %s", PROGRAM_NAME, GIT_VERSION);
     audio_showstation(versionString);
+
+#ifdef ST7789_TFT
+    {
+        st7789Message msg;
+        msg.action = st7789Message::CLEAR_SCREEN;
+        xQueueSend(st7789Queue, &msg, portMAX_DELAY);
+        msg.action = st7789Message::SHOW_IPADDRESS;
+        xQueueSend(st7789Queue, &msg, portMAX_DELAY);
+    }
+#endif
 }
 
 void upDatePlaylistOnClients()
@@ -363,12 +591,45 @@ static inline __attribute__((always_inline)) bool htmlUnmodified(const AsyncWebS
 // cppcheck-suppress unusedFunction
 void setup()
 {
+    SPI.setHwCs(true);
+    SPI.begin(SPI_CLK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN);
+    spiMutex = xSemaphoreCreateMutex(); // outside the ST77*9 area so the SPI can continue to lock/unlock for vs1053 when running on another board
+
+#ifdef ST7789_TFT
+    st7789Queue = xQueueCreate(5, sizeof(struct st7789Message));
+
+    if (!st7789Queue)
+    {
+        log_e("FATAL error! could not create feather queue HALTED!");
+        while (1)
+            delay(100);
+    }
+    log_i("starting tft");
+
+    const BaseType_t result1 = xTaskCreatePinnedToCore(
+        st7789Task,           /* Function to implement the task */
+        "st7789Task",         /* Name of the task */
+        8000,                 /* Stack size in BYTES! */
+        NULL,                 /* Task input parameter */
+        tskIDLE_PRIORITY + 1, /* Priority of the task */
+        NULL,                 /* Task handle. */
+        1                     /* Core where the task should run */
+    );
+
+    if (result1 != pdPASS)
+    {
+        log_e("ERROR! Could not create st7789Task. System halted.");
+        while (true)
+            delay(100);
+    }
+#endif
+
 #if defined(CONFIG_IDF_TARGET_ESP32S2) && ARDUHAL_LOG_LEVEL != ARDUHAL_LOG_LEVEL_NONE
     delay(3000);
     Serial.setDebugOutput(true);
 #endif
 
-    log_i("\n\n\t\t\t\teStreamplayer version: %s\n", GIT_VERSION);
+    log_i("\n\n\t\t\t\t%s version: %s\n", PROGRAM_NAME, GIT_VERSION);
 
     [[maybe_unused]] const uint32_t idf = ESP_IDF_VERSION_PATCH + ESP_IDF_VERSION_MINOR * 10 + ESP_IDF_VERSION_MAJOR * 100;
     [[maybe_unused]] const uint32_t ard = ESP_ARDUINO_VERSION_PATCH + ESP_ARDUINO_VERSION_MINOR * 10 + ESP_ARDUINO_VERSION_MAJOR * 100;
@@ -599,7 +860,7 @@ void setup()
 
     DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
 
-    playlistHasEnded(); /* before the webserver starts! */
+    playlistHasEnded();
 
     server.begin();
     ws.onEvent(websocketEventHandler);
@@ -607,13 +868,13 @@ void setup()
     log_i("Webserver started");
 
     const BaseType_t result = xTaskCreatePinnedToCore(
-        playerTask,            /* Function to implement the task */
-        "playerTask",          /* Name of the task */
-        8000,                  /* Stack size in BYTES! */
-        NULL,                  /* Task input parameter */
-        3 | portPRIVILEGE_BIT, /* Priority of the task */
-        NULL,                  /* Task handle. */
-        1                      /* Core where the task should run */
+        playerTask,                                 /* Function to implement the task */
+        "playerTask",                               /* Name of the task */
+        8000,                                       /* Stack size in BYTES! */
+        NULL,                                       /* Task input parameter */
+        (tskIDLE_PRIORITY + 2) | portPRIVILEGE_BIT, /* Priority of the task */
+        NULL,                                       /* Task handle. */
+        0                                           /* Core where the task should run */
     );
 
     if (result != pdPASS)
@@ -662,6 +923,16 @@ void audio_showstreamtitle(const char *info)
     snprintf(streamtitle, sizeof(streamtitle), "streamtitle\n%s", percentEncode(info).c_str());
     log_d("%s", streamtitle);
     ws.textAll(streamtitle);
+
+#ifdef ST7789_TFT
+    if (playList.currentItem() == PLAYLIST_STOPPED)
+        return;
+
+    st7789Message msg;
+    snprintf(msg.str, sizeof(msg.str), "%s", info);
+    msg.action = st7789Message::SHOW_TITLE;
+    xQueueSend(st7789Queue, &msg, portMAX_DELAY);
+#endif
 }
 
 void audio_eof_stream(const char *info)
